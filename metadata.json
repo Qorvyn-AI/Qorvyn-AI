@@ -1,0 +1,7 @@
+{
+  "name": "Qorvyn AI",
+  "description": "A SaaS platform for business email marketing automation using AI, featuring separate Admin and Client portals.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}
