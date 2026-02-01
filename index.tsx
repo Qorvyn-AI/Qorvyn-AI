@@ -11,7 +11,14 @@ if (typeof process === 'undefined') {
   (window as any).process = { env: {} };
 }
 
-// 2. Error Boundary
+// 2. API Key Check
+// Logs a clear error if the key is missing to help with Vercel debugging.
+// Note: We check process.env.API_KEY as that is the convention for this project.
+if (!process.env.API_KEY) {
+  console.error('API Key Missing: Ensure process.env.API_KEY is set in your environment variables.');
+}
+
+// 3. Error Boundary
 // Catches runtime errors (like import failures or missing props) and shows a UI message
 // instead of a blank white screen.
 class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
