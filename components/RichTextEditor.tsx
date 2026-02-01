@@ -9,7 +9,10 @@ import {
   Type,
   RemoveFormatting,
   Image as ImageIcon,
-  User
+  User,
+  Calendar,
+  ExternalLink,
+  Sparkles
 } from 'lucide-react';
 
 interface RichTextEditorProps {
@@ -33,6 +36,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   useEffect(() => {
     if (contentRef.current && value !== contentRef.current.innerHTML) {
+      // Avoid overwriting content while user is typing unless it's an external update
       if (!isFocused || contentRef.current.innerHTML === '<br>' || contentRef.current.innerHTML === '') {
         contentRef.current.innerHTML = value;
       }
@@ -82,10 +86,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   };
 
   const insertPersonalization = (tag: string) => {
-    // Ensure editor has focus before inserting
-    if (contentRef.current) {
-      contentRef.current.focus();
-    }
+    // Selection is preserved if we use onMouseDown preventDefault on the buttons
     execCommand('insertText', tag);
     setShowPersonalize(false);
   };
@@ -119,6 +120,19 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     </button>
   );
 
+  const PersonalizeItem = ({ label, tag, icon: Icon }: { label: string; tag: string; icon?: any }) => (
+    <button 
+      onMouseDown={(e) => {
+        e.preventDefault();
+        insertPersonalization(tag);
+      }}
+      className="flex items-center gap-2 w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors"
+    >
+      {Icon && <Icon size={14} className="text-gray-400" />}
+      {label}
+    </button>
+  );
+
   return (
     <div className={`flex flex-col border border-gray-300 rounded-lg overflow-hidden bg-white ${className} ${isFocused ? 'ring-2 ring-primary border-primary' : ''}`}>
       {/* Hidden File Input */}
@@ -146,21 +160,20 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
              <ToolbarButton 
                 icon={User} 
                 onClick={() => setShowPersonalize(!showPersonalize)} 
-                title="Personalize" 
+                title="Personalization Tags" 
                 active={showPersonalize}
              />
              {showPersonalize && (
-                <div className="absolute top-full left-0 mt-1 w-48 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-20 animate-in fade-in zoom-in-95 duration-100">
-                    <div className="px-4 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Insert Variable</div>
-                    <button onClick={() => insertPersonalization('{{Contact.Name}}')} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        Contact Name
-                    </button>
-                    <button onClick={() => insertPersonalization('{{Contact.Email}}')} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        Contact Email
-                    </button>
-                    <button onClick={() => insertPersonalization('{{Business.Name}}')} className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        Business Name
-                    </button>
+                <div className="absolute top-full left-0 mt-1 w-56 bg-white rounded-lg shadow-xl border border-gray-200 py-1 z-20 animate-in fade-in zoom-in-95 duration-100">
+                    <div className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 mb-1">Contact Data</div>
+                    <PersonalizeItem label="Contact Name" tag="{{Contact.Name}}" icon={User} />
+                    <PersonalizeItem label="Contact Email" tag="{{Contact.Email}}" icon={Type} />
+                    <PersonalizeItem label="Contact Phone" tag="{{Contact.Phone}}" icon={Type} />
+                    
+                    <div className="px-4 py-2 text-[10px] font-bold text-gray-400 uppercase tracking-widest border-b border-gray-100 mt-2 mb-1">Business & System</div>
+                    <PersonalizeItem label="Business Name" tag="{{Business.Name}}" />
+                    <PersonalizeItem label="Current Date" tag="{{System.Date}}" icon={Calendar} />
+                    <PersonalizeItem label="Unsubscribe Link" tag="{{System.Unsubscribe}}" icon={ExternalLink} />
                 </div>
              )}
         </div>
@@ -185,8 +198,12 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       
       {/* Footer */}
       <div className="px-4 py-2 bg-gray-50 border-t border-gray-100 text-xs text-gray-400 flex justify-between">
-         <span>Rich Text + Images</span>
-         <span>{value.length} chars</span>
+         <span className="flex items-center gap-1.5">
+            {/* Fix: Added Sparkles import to lucide-react list */}
+            <Sparkles size={12} className="text-primary" />
+            Rich Editor with AI Context
+         </span>
+         <span>{value.length} characters</span>
       </div>
     </div>
   );

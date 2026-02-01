@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { MockBackend } from '../../services/mockBackend';
 import { useAuth } from '../../context/AuthContext';
 import { WiFiPortalConfig } from '../../types';
-import { Save, ExternalLink, RefreshCw, Check, Copy } from 'lucide-react';
-import { CaptivePortal } from '../../pages/public/CaptivePortal';
+import { Save, RefreshCw, Check, Copy, Globe, Smartphone, Monitor } from 'lucide-react';
 
 export const WifiPortalBuilder = () => {
   const { user } = useAuth();
@@ -18,7 +17,7 @@ export const WifiPortalBuilder = () => {
   });
   const [saving, setSaving] = useState(false);
   const [success, setSuccess] = useState(false);
-  const [showLivePreview, setShowLivePreview] = useState(false);
+  const [activeTab, setActiveTab] = useState<'editor' | 'preview'>('editor');
 
   useEffect(() => {
     if (user?.clientId) {
@@ -42,72 +41,67 @@ export const WifiPortalBuilder = () => {
     setTimeout(() => setSuccess(false), 2000);
   };
 
-  // Robust URL generation with State encoding for demo purposes
-  const getPortalUrl = () => {
-    if (!user?.clientId) return '';
-    
-    // Get the base URL directly from the current location
-    const currentUrl = window.location.href;
-    const rootUrl = currentUrl.split('#')[0];
-    const cleanBaseUrl = rootUrl.endsWith('/') ? rootUrl.slice(0, -1) : rootUrl;
-    
-    // Encode config to support cross-browser demo
-    const configString = JSON.stringify(config);
-    const encodedConfig = btoa(unescape(encodeURIComponent(configString)));
-    
-    return `${cleanBaseUrl}/#/portal/${user.clientId}?demo_config=${encodedConfig}`;
+  const getBaseUrl = () => {
+    return window.location.href.split('#')[0];
   };
 
-  const portalUrl = getPortalUrl();
-
   const copyLink = () => {
-    // Check if we are in a blob environment or local preview which often fails with external copying
-    if (window.location.protocol === 'blob:') {
-        alert("NOTE: You are in a restricted preview environment (Blob URL). The copied link may not be accessible outside this tab.");
-    }
+    if (!user?.clientId) return;
+    const url = `${getBaseUrl()}#/portal/${user.clientId}`;
+    navigator.clipboard.writeText(url);
+    alert(`Public Link Copied: ${url}\n\nNote: In this demo environment, this link will only work in this browser.`);
+  };
+
+  const openLiveSite = async () => {
+    if (!user?.clientId) return;
     
-    if (!portalUrl) return;
-    navigator.clipboard.writeText(portalUrl);
-    alert('Link copied to clipboard!');
+    // Auto-save before previewing to ensure latest changes are seen
+    if (!success) {
+        await handleSave();
+    }
+
+    const url = `${getBaseUrl()}#/portal/preview`;
+    window.open(url, '_blank');
   };
 
   return (
-    <>
-      <div className="space-y-6 max-w-6xl mx-auto pb-12">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Wi-Fi Portal Builder</h2>
-            <p className="text-gray-500">Design the login page your customers see when they connect.</p>
-          </div>
-          <div className="flex gap-3">
-            <button 
-              onClick={copyLink}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm font-medium"
-            >
-              <Copy size={16} /> Copy Public Link
-            </button>
-            <button 
-              onClick={() => setShowLivePreview(true)}
-              className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm font-medium"
-            >
-              <ExternalLink size={16} /> View Live
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2 font-medium disabled:opacity-50"
-            >
-              {saving ? <RefreshCw className="animate-spin" size={18} /> : success ? <Check size={18} /> : <Save size={18} />}
-              {saving ? 'Saving...' : success ? 'Saved!' : 'Save Changes'}
-            </button>
-          </div>
+    <div className="space-y-6 max-w-6xl mx-auto pb-12">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-gray-900">Wi-Fi Portal Builder</h2>
+          <p className="text-gray-500">Design the login page your customers see when they connect.</p>
         </div>
+        <div className="flex gap-3">
+          <button 
+            onClick={copyLink}
+            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm font-medium transition-colors"
+          >
+            <Copy size={16} /> Copy Public Link
+          </button>
+          <button 
+            onClick={openLiveSite}
+            className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-100 flex items-center gap-2 text-sm font-medium transition-colors"
+          >
+            <Globe size={16} /> View Live
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2 font-medium disabled:opacity-50 transition-colors shadow-sm"
+          >
+            {saving ? <RefreshCw className="animate-spin" size={18} /> : success ? <Check size={18} /> : <Save size={18} />}
+            {saving ? 'Saving...' : success ? 'Saved!' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          {/* Editor */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        {/* Editor Column */}
+        <div className="lg:col-span-7 space-y-6">
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-            <div className="p-4 bg-gray-50 border-b border-gray-200 font-medium text-gray-700">
-              Page Configuration
+            <div className="p-4 bg-gray-50 border-b border-gray-200 font-medium text-gray-700 flex items-center gap-2">
+              <RefreshCw size={16} className="text-gray-400" />
+              Portal Configuration
             </div>
             <div className="p-6 space-y-6">
               <div>
@@ -131,7 +125,7 @@ export const WifiPortalBuilder = () => {
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Background Color</label>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Background</label>
                     <div className="flex gap-2">
                       <input
                           type="color"
@@ -167,11 +161,22 @@ export const WifiPortalBuilder = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Background Image URL (Optional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Background Image URL</label>
                 <input
                   type="text"
                   value={config.backgroundImage || ''}
                   onChange={(e) => setConfig({ ...config, backgroundImage: e.target.value })}
+                  placeholder="https://images.unsplash.com/..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary"
+                />
+              </div>
+
+               <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Logo Image URL</label>
+                <input
+                  type="text"
+                  value={config.logoImage || ''}
+                  onChange={(e) => setConfig({ ...config, logoImage: e.target.value })}
                   placeholder="https://..."
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-primary focus:border-primary"
                 />
@@ -187,7 +192,7 @@ export const WifiPortalBuilder = () => {
                       onChange={(e) => setConfig({...config, requirePhone: e.target.checked})}
                       className="w-4 h-4 text-primary focus:ring-primary border-gray-300 rounded"
                     />
-                    <span className="text-sm font-medium text-gray-700">Collect Phone Number (Optional field)</span>
+                    <span className="text-sm font-medium text-gray-700">Collect Phone Number</span>
                 </label>
                 <p className="text-xs text-gray-500 ml-7 mt-1">If unchecked, only Name and Email are required.</p>
               </div>
@@ -203,7 +208,7 @@ export const WifiPortalBuilder = () => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Terms & Conditions Text</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Terms Text</label>
                 <textarea
                   value={config.termsText}
                   onChange={(e) => setConfig({ ...config, termsText: e.target.value })}
@@ -213,10 +218,12 @@ export const WifiPortalBuilder = () => {
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Preview */}
-          <div className="flex justify-center items-start">
-              <div className="relative border-8 border-gray-900 rounded-[3rem] h-[700px] w-[360px] bg-black shadow-2xl overflow-hidden ring-4 ring-gray-200">
+        {/* Preview Column */}
+        <div className="lg:col-span-5 flex justify-center items-start pt-4 lg:pt-0">
+            <div className="sticky top-6">
+                <div className="relative border-[12px] border-gray-900 rounded-[3rem] h-[720px] w-[360px] bg-black shadow-2xl overflow-hidden ring-4 ring-gray-200">
                   {/* Notch */}
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 w-32 bg-black rounded-b-xl z-20"></div>
                   
@@ -227,66 +234,71 @@ export const WifiPortalBuilder = () => {
                   >
                       {config.backgroundImage && (
                           <div 
-                              className="absolute inset-0 bg-cover bg-center z-0 opacity-20"
+                              className="absolute inset-0 bg-cover bg-center z-0 opacity-20 pointer-events-none"
                               style={{ backgroundImage: `url(${config.backgroundImage})` }}
                           />
                       )}
                       
                       <div className="relative z-10 flex flex-col h-full p-6">
+                           {/* Status Bar Mock */}
+                           <div className="h-8 flex justify-between items-center px-1 mb-4 opacity-50 text-gray-900">
+                                <span className="text-[10px] font-bold">9:41</span>
+                                <div className="flex gap-1">
+                                    <div className="w-4 h-2.5 bg-current rounded-sm"></div>
+                                    <div className="w-0.5 h-2.5 bg-current rounded-sm"></div>
+                                </div>
+                           </div>
+
                           <div className="flex-1 flex flex-col justify-center items-center text-center space-y-6">
                               {config.logoImage ? (
-                                  <img src={config.logoImage} alt="Logo" className="h-16 w-auto object-contain" />
+                                  <img src={config.logoImage} alt="Logo" className="h-20 w-auto object-contain" />
                               ) : (
-                                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center text-2xl font-bold text-gray-400">
-                                      Logo
+                                  <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400 shadow-inner">
+                                      <span className="font-bold text-xs">LOGO</span>
                                   </div>
                               )}
                               
                               <div className="space-y-2">
-                                  <h2 className="text-2xl font-bold text-gray-900">{config.headline}</h2>
+                                  <h2 className="text-2xl font-bold text-gray-900 leading-tight">{config.headline}</h2>
                                   <p className="text-gray-600 text-sm">{config.subheadline}</p>
                               </div>
 
                               <div className="w-full space-y-3 pt-4">
-                                  <input disabled type="text" placeholder="Full Name" className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white" />
-                                  <input disabled type="email" placeholder="Email Address" className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white" />
+                                  <div className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white/80 text-left text-sm text-gray-400">Full Name</div>
+                                  <div className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white/80 text-left text-sm text-gray-400">Email Address</div>
                                   {config.requirePhone && (
-                                      <input disabled type="tel" placeholder="Phone Number" className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white" />
+                                      <div className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white/80 text-left text-sm text-gray-400">Phone Number</div>
                                   )}
                               </div>
                               
-                              <div className="flex items-start gap-2 text-left pt-2">
-                                  <div className="mt-1 w-4 h-4 border border-gray-300 rounded flex-shrink-0" />
-                                  <p className="text-xs text-gray-500 leading-tight">
+                              <div className="flex items-start gap-3 text-left pt-2">
+                                  <div className="mt-0.5 w-4 h-4 border border-gray-400 rounded flex-shrink-0" />
+                                  <p className="text-[10px] text-gray-500 leading-snug">
                                       {config.termsText}
                                   </p>
                               </div>
                           </div>
 
-                          <div className="pt-6">
+                          <div className="pt-8 pb-4">
                               <button 
-                                  className="w-full py-3.5 rounded-lg font-bold text-white shadow-lg transition-transform active:scale-95"
+                                  className="w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95"
                                   style={{ backgroundColor: config.accentColor }}
                               >
                                   {config.buttonText}
                               </button>
-                              <p className="text-[10px] text-center text-gray-400 mt-4">
-                                  Powered by Qorvyn Wi-Fi
+                              <p className="text-[10px] text-center text-gray-400 mt-4 font-medium uppercase tracking-widest">
+                                  Free High-Speed Wi-Fi
                               </p>
                           </div>
                       </div>
                   </div>
-              </div>
-          </div>
+                </div>
+                <div className="text-center mt-4">
+                   <p className="text-sm text-gray-500">Live Preview</p>
+                </div>
+            </div>
         </div>
       </div>
-
-      {/* Full Screen Live Preview Overlay */}
-      {showLivePreview && (
-        <div className="fixed inset-0 z-[100] bg-white animate-in fade-in slide-in-from-bottom-10 duration-300">
-           <CaptivePortal previewMode={true} previewConfig={config} onClose={() => setShowLivePreview(false)} />
-        </div>
-      )}
-    </>
+    </div>
   );
 };

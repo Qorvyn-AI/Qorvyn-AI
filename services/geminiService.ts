@@ -4,6 +4,7 @@ import { Contact } from "../types";
 export interface GeneratedEmail {
   subject: string;
   body: string;
+  subjectSuggestions?: string[];
 }
 
 export interface SocialPosts {
@@ -29,10 +30,21 @@ export interface ImageInput {
   mimeType: string;
 }
 
+export interface PastCampaignData {
+  subject: string;
+  content: string;
+  openRate: number;
+}
+
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const GeminiService = {
-  generateEmail: async (instruction: string, businessName: string, images: ImageInput[] = []): Promise<GeneratedEmail> => {
+  generateEmail: async (
+    instruction: string, 
+    businessName: string, 
+    images: ImageInput[] = [],
+    pastCampaigns: PastCampaignData[] = []
+  ): Promise<GeneratedEmail> => {
     try {
       // Prepare content parts
       const parts: any[] = [];
@@ -64,7 +76,22 @@ export const GeminiService = {
         `;
       }
 
-      promptText += `\nReturn the result as a JSON object with 'subject' and 'body' fields.
+      if (pastCampaigns.length > 0) {
+        promptText += `\n\n### HISTORICAL PERFORMANCE DATA
+        Use the following data from our top-performing past campaigns to guide your writing style and subject line generation.
+        
+        Top Campaigns (Subject & Open Rate):
+        ${JSON.stringify(pastCampaigns.map(c => ({ subject: c.subject, openRate: `${c.openRate}%`, snippet: c.content.substring(0, 100) + "..." })))}
+        
+        **Instructions for History:**
+        1. Adopt a similar tone/voice to these successful emails in the 'body'.
+        2. In the 'subjectSuggestions' array, generate 5 alternative subject lines that use similar psychological triggers (urgency, curiosity, benefit) as the high-performing past subjects.
+        `;
+      } else {
+        promptText += `\n\nIn the 'subjectSuggestions' array, generate 5 alternative catchy subject lines suitable for this email.`;
+      }
+
+      promptText += `\nReturn the result as a JSON object with 'subject', 'body', and 'subjectSuggestions' fields.
         The 'body' should be formatted with basic HTML tags like <p>, <br>, <strong>, and the <img> tags as requested. Do not include <html> or <body> wrapper tags.`;
 
       parts.push({ text: promptText });
@@ -78,9 +105,13 @@ export const GeminiService = {
             type: Type.OBJECT,
             properties: {
               subject: { type: Type.STRING },
-              body: { type: Type.STRING }
+              body: { type: Type.STRING },
+              subjectSuggestions: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              }
             },
-            required: ['subject', 'body']
+            required: ['subject', 'body', 'subjectSuggestions']
           }
         }
       });

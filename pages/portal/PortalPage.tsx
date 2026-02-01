@@ -1,25 +1,18 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams } from 'react-router-dom';
 import { MockBackend } from '../../services/mockBackend';
 import { WiFiPortalConfig } from '../../types';
-import { Wifi, CheckCircle, Loader2, Globe, ShieldCheck } from 'lucide-react';
+import { Wifi, CheckCircle, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
-interface CaptivePortalProps {
-  previewMode?: boolean;
-  previewConfig?: WiFiPortalConfig;
-  onClose?: () => void;
-}
-
-export const CaptivePortal: React.FC<CaptivePortalProps> = ({ 
-  previewMode = false, 
-  previewConfig, 
-  onClose 
-}) => {
+export const PortalPage = () => {
   const { clientId } = useParams<{ clientId: string }>();
-  const [searchParams] = useSearchParams();
+  const { user } = useAuth();
+  
   const [config, setConfig] = useState<WiFiPortalConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isPreview, setIsPreview] = useState(false);
   
   // Form State
   const [formData, setFormData] = useState({
@@ -32,59 +25,42 @@ export const CaptivePortal: React.FC<CaptivePortalProps> = ({
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    // 1. Direct Preview Mode (Internal)
-    if (previewMode && previewConfig) {
-      setConfig(previewConfig);
-      setLoading(false);
-      return;
-    }
-
-    // 2. Load from URL (Public Link) or Local Storage
     loadConfig();
-  }, [clientId, searchParams, previewMode, previewConfig]);
+  }, [clientId, user]);
 
   const loadConfig = async () => {
     try {
-      // PRIORITY 1: Check for 'data' param in URL (Portable Live Link)
-      // This allows the link to work on ANY device/browser without backend sync
-      const dataParam = searchParams.get('data');
-      if (dataParam) {
-         try {
-            // Robust Base64 decode for Unicode
-            const jsonStr = decodeURIComponent(escape(atob(dataParam)));
-            const parsedConfig = JSON.parse(jsonStr) as WiFiPortalConfig;
-            setConfig(parsedConfig);
-            setLoading(false);
-            return;
-         } catch (e) {
-            console.warn("Failed to parse data param, falling back to local storage");
+      setLoading(true);
+      setError('');
+      
+      let targetClientId = clientId;
+      
+      // Handle Preview Mode logic:
+      // If URL is /portal/preview, we try to load the currently logged-in user's config
+      if (clientId === 'preview') {
+         setIsPreview(true);
+         if (user?.clientId) {
+            targetClientId = user.clientId;
+         } else {
+             // If not logged in and trying to preview, we can't show their specific data
+             // in this mock environment without a session.
+             throw new Error("Please log in to the dashboard to preview your portal.");
          }
       }
 
-      // PRIORITY 2: Check Local Mock Backend (Same Device)
-      if (clientId) {
-        const settings = await MockBackend.getWifiSettings(clientId);
+      if (targetClientId) {
+        const settings = await MockBackend.getWifiSettings(targetClientId);
         if (settings) {
             setConfig(settings);
-            setLoading(false);
-            return;
+        } else {
+            throw new Error("Portal configuration not found for this client.");
         }
+      } else {
+         throw new Error("Invalid Portal URL");
       }
-
-      // Fallback: Default Config if nothing found (Prevent broken page)
-      setConfig({
-        headline: "Welcome",
-        subheadline: "Sign in to join the network",
-        buttonText: "Connect",
-        backgroundColor: "#ffffff",
-        accentColor: "#4f46e5",
-        requirePhone: false,
-        termsText: "I agree to the Terms of Service."
-      });
-      
-    } catch (e) {
-      console.error(e);
-      setError('Unable to load portal configuration.');
+    } catch (e: any) {
+      console.warn("Portal load failed", e);
+      setError(e.message || 'Could not load portal settings.');
     } finally {
       setLoading(false);
     }
@@ -100,11 +76,11 @@ export const CaptivePortal: React.FC<CaptivePortalProps> = ({
 
     setSubmitting(true);
     
-    // Simulate API delay
+    // Simulate API network delay
     await new Promise(resolve => setTimeout(resolve, 1500));
 
-    if (!previewMode && clientId) {
-        // Try to save if we are in the local environment
+    if (!isPreview && clientId) {
+        // Only save data if this is a "real" visit (not preview mode)
         try {
            await MockBackend.addContact(
              clientId, 
@@ -114,7 +90,6 @@ export const CaptivePortal: React.FC<CaptivePortalProps> = ({
              'wifi_portal'
            );
         } catch(e) {
-            // Ignore errors in public demo mode (no backend)
             console.log("Mock save failed (expected in public demo)");
         }
     }
@@ -131,12 +106,18 @@ export const CaptivePortal: React.FC<CaptivePortalProps> = ({
   );
   
   if (error || !config) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-gray-100 p-4 text-center">
-        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
-            <Wifi size={32} className="text-red-500" />
+    <div className="h-screen flex flex-col items-center justify-center bg-gray-50 p-6 text-center">
+        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-6">
+            <AlertCircle size={32} className="text-red-500" />
         </div>
-        <h1 className="text-xl font-bold text-gray-800">Connection Error</h1>
-        <p className="text-gray-600 mt-2">{error || "Configuration missing"}</p>
+        <h1 className="text-2xl font-bold text-gray-900 mb-2">Portal Unavailable</h1>
+        <p className="text-gray-600 max-w-md mx-auto">{error}</p>
+        <button 
+            onClick={() => window.location.reload()} 
+            className="mt-8 px-6 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+        >
+            Try Again
+        </button>
     </div>
   );
 
@@ -168,6 +149,12 @@ export const CaptivePortal: React.FC<CaptivePortalProps> = ({
   return (
     <div className="min-h-screen flex flex-col relative w-full overflow-hidden font-sans" style={{ backgroundColor: config.backgroundColor }}>
        
+       {isPreview && (
+          <div className="fixed top-0 left-0 w-full bg-indigo-600 text-white text-xs py-1.5 text-center z-50 font-bold uppercase tracking-wider shadow-md">
+              Preview Mode
+          </div>
+       )}
+
        {/* Background Image Layer */}
        {config.backgroundImage && (
             <div 

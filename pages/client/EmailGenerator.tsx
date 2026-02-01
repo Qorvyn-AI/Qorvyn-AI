@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GeminiService, SocialPosts } from '../../services/geminiService';
+import { GeminiService, SocialPosts, PastCampaignData } from '../../services/geminiService';
 import { MockBackend } from '../../services/mockBackend';
 import { useAuth } from '../../context/AuthContext';
 import { Sparkles, Save, Send as SendIcon, AlertCircle, CheckCircle, Mail, ExternalLink, ArrowLeft, Linkedin, Twitter, Facebook, Copy, CalendarClock, X, Image as ImageIcon } from 'lucide-react';
@@ -49,31 +49,41 @@ export const EmailGenerator = () => {
   }, [location]);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files);
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files) as File[];
       const validTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif'];
       
-      const validFiles = files.filter(file => {
-          const isValid = validTypes.includes(file.type);
-          if (!isValid) {
-              alert(`File "${file.name}" is not supported. Please use PNG, JPEG, WEBP, or HEIC.`);
+      const validFiles: File[] = [];
+      let invalidCount = 0;
+
+      files.forEach(file => {
+          if (validTypes.includes(file.type)) {
+              validFiles.push(file);
+          } else {
+              invalidCount++;
           }
-          return isValid;
       });
+
+      if (invalidCount > 0) {
+          alert(`${invalidCount} file(s) skipped. Supported formats: PNG, JPEG, WEBP, HEIC.`);
+      }
 
       if (validFiles.length === 0) return;
 
       setSelectedImages(prev => [...prev, ...validFiles]);
 
-      // Generate previews
       validFiles.forEach(file => {
         const reader = new FileReader();
         reader.onloadend = () => {
-          setImagePreviews(prev => [...prev, reader.result as string]);
+          if (typeof reader.result === 'string') {
+             setImagePreviews(prev => [...prev, reader.result as string]);
+          }
         };
         reader.readAsDataURL(file);
       });
     }
+    // Reset value to allow re-uploading same file if deleted
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removeImage = (index: number) => {
@@ -98,7 +108,18 @@ export const EmailGenerator = () => {
         return { data, mimeType };
       });
 
-      const result = await GeminiService.generateEmail(instruction, businessName, formattedImages);
+      // Prepare Past Campaigns Data
+      let pastCampaigns: PastCampaignData[] = [];
+      if (user?.clientId) {
+          const emails = await MockBackend.getEmails(user.clientId);
+          pastCampaigns = emails
+              .filter(e => e.status === 'sent' && e.openRate !== undefined)
+              .sort((a, b) => (b.openRate || 0) - (a.openRate || 0))
+              .slice(0, 3) // Top 3
+              .map(e => ({ subject: e.subject, content: e.content, openRate: e.openRate || 0 }));
+      }
+
+      const result = await GeminiService.generateEmail(instruction, businessName, formattedImages, pastCampaigns);
       
       // Post-process image placeholders
       let processedBody = result.body;
@@ -111,6 +132,11 @@ export const EmailGenerator = () => {
         subject: result.subject,
         body: processedBody
       });
+      
+      if (result.subjectSuggestions) {
+          setSuggestions(result.subjectSuggestions);
+      }
+
     } catch (error) {
       console.error(error);
       alert("Failed to generate email. Please try again.");
@@ -366,9 +392,12 @@ export const EmailGenerator = () => {
 
           <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 flex gap-3">
              <AlertCircle className="text-blue-600 flex-shrink-0" size={20} />
-             <p className="text-sm text-blue-800">
-               <strong>Tip:</strong> Upload images of your products, and the AI will automatically place them in the email and write descriptions for them.
-             </p>
+             <div className="text-sm text-blue-800">
+               <p className="font-bold mb-1">Smart Generation Active</p>
+               <p>
+                 AI is now using your top-performing campaigns to automatically suggest subject lines and match your brand voice.
+               </p>
+             </div>
           </div>
         </div>
 
@@ -403,7 +432,7 @@ export const EmailGenerator = () => {
                    {/* Subject Suggestions */}
                    {suggestions.length > 0 && (
                         <div className="mt-3 bg-purple-50 rounded-lg p-3 animate-in fade-in slide-in-from-top-2">
-                            <p className="text-xs font-bold text-purple-800 mb-2">AI Suggestions:</p>
+                            <p className="text-xs font-bold text-purple-800 mb-2">AI Suggestions (Based on History):</p>
                             <ul className="space-y-1">
                                 {suggestions.map((sub, i) => (
                                     <li 

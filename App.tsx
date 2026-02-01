@@ -14,7 +14,7 @@ import { NewsletterBuilder } from './pages/client/NewsletterBuilder';
 import { Settings } from './pages/client/Settings';
 import { GrowthStrategy } from './pages/client/GrowthStrategy';
 import { WifiPortalBuilder } from './pages/client/WifiPortalBuilder';
-import { CaptivePortal } from './pages/public/CaptivePortal';
+import { PortalPage } from './pages/portal/PortalPage';
 
 // Route Guards
 interface PrivateRouteProps {
@@ -45,7 +45,7 @@ const AppRoutes = () => {
       <Route path="/login" element={user ? <Navigate to={user.role === 'admin' ? '/admin' : '/client'} /> : <Login />} />
       
       {/* Public Captive Portal Route - No Auth Required */}
-      <Route path="/portal/:clientId" element={<CaptivePortal />} />
+      <Route path="/portal/:clientId" element={<PortalPage />} />
       
       {/* Admin Routes */}
       <Route path="/admin" element={<PrivateRoute role="admin"><Layout><AdminDashboard /></Layout></PrivateRoute>} />

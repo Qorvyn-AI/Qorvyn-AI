@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { GeminiService } from '../../services/geminiService';
+import { GeminiService, PastCampaignData } from '../../services/geminiService';
 import { MockBackend } from '../../services/mockBackend';
 import { useAuth } from '../../context/AuthContext';
 import { Sparkles, Save, Send as SendIcon, AlertCircle, CheckCircle, Mail, ArrowLeft, Image as ImageIcon, User, CalendarClock, Upload, X } from 'lucide-react';
@@ -43,31 +43,41 @@ export const NewsletterBuilder = () => {
   }, [location]);
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files) {
-      const files = Array.from(e.target.files);
+    if (e.target.files && e.target.files.length > 0) {
+      const files = Array.from(e.target.files) as File[];
       const validTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/heic', 'image/heif'];
       
-      const validFiles = files.filter(file => {
-          const isValid = validTypes.includes(file.type);
-          if (!isValid) {
-              alert(`File "${file.name}" is not supported. Please use PNG, JPEG, WEBP, or HEIC.`);
+      const validFiles: File[] = [];
+      let invalidCount = 0;
+
+      files.forEach(file => {
+          if (validTypes.includes(file.type)) {
+              validFiles.push(file);
+          } else {
+              invalidCount++;
           }
-          return isValid;
       });
+
+      if (invalidCount > 0) {
+          alert(`${invalidCount} file(s) skipped. Supported formats: PNG, JPEG, WEBP, HEIC.`);
+      }
 
       if (validFiles.length === 0) return;
 
       setSelectedImages(prev => [...prev, ...validFiles]);
 
-      // Generate previews
       validFiles.forEach(file => {
         const reader = new FileReader();
         reader.onloadend = () => {
-          setImagePreviews(prev => [...prev, reader.result as string]);
+          if (typeof reader.result === 'string') {
+            setImagePreviews(prev => [...prev, reader.result as string]);
+          }
         };
         reader.readAsDataURL(file);
       });
     }
+    // Reset value to allow re-uploading same file if deleted
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const removeImage = (index: number) => {
@@ -78,6 +88,7 @@ export const NewsletterBuilder = () => {
   const handleGenerate = async () => {
     if (!instruction.trim()) return;
     setIsGenerating(true);
+    setSuggestions([]);
     try {
       const client = user?.clientId ? await MockBackend.getClientById(user.clientId) : null;
       const businessName = client?.name || "Our Business";
@@ -89,10 +100,21 @@ export const NewsletterBuilder = () => {
         return { data, mimeType };
       });
 
-      // 2. Call AI
-      const result = await GeminiService.generateEmail(instruction, businessName, formattedImages);
+      // 2. Prepare Past Campaigns Data
+      let pastCampaigns: PastCampaignData[] = [];
+      if (user?.clientId) {
+          const emails = await MockBackend.getEmails(user.clientId);
+          pastCampaigns = emails
+              .filter(e => e.status === 'sent' && e.openRate !== undefined)
+              .sort((a, b) => (b.openRate || 0) - (a.openRate || 0))
+              .slice(0, 3) // Top 3
+              .map(e => ({ subject: e.subject, content: e.content, openRate: e.openRate || 0 }));
+      }
+
+      // 3. Call AI
+      const result = await GeminiService.generateEmail(instruction, businessName, formattedImages, pastCampaigns);
       
-      // 3. Post-process: Replace placeholders with actual image data
+      // 4. Post-process: Replace placeholders with actual image data
       let processedBody = result.body;
       imagePreviews.forEach((imgData, index) => {
          // Replace {{IMAGE_0}}, {{IMAGE_1}} etc with actual base64 data src
@@ -105,6 +127,10 @@ export const NewsletterBuilder = () => {
         subject: result.subject,
         body: processedBody
       });
+
+      if (result.subjectSuggestions) {
+          setSuggestions(result.subjectSuggestions);
+      }
 
     } catch (error) {
       console.error(error);
@@ -263,7 +289,7 @@ export const NewsletterBuilder = () => {
                     </button>
                 )}
                 <p className="text-[10px] text-gray-500 mt-1">
-                    AI will place these images contextually in your email.
+                    AI will analyze these images and place them in the email content automatically.
                 </p>
              </div>
 
@@ -300,7 +326,7 @@ export const NewsletterBuilder = () => {
                {/* Suggestions List */}
                {suggestions.length > 0 && (
                     <div className="mt-2 bg-purple-50 rounded-lg p-2 animate-in fade-in slide-in-from-top-1">
-                        <p className="text-[10px] font-bold text-purple-800 mb-1">AI Suggestions:</p>
+                        <p className="text-[10px] font-bold text-purple-800 mb-1">AI Suggestions (History-Based):</p>
                         <ul className="space-y-1">
                             {suggestions.map((sub, i) => (
                                 <li 

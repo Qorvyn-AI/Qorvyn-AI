@@ -509,12 +509,12 @@ export const Contacts = () => {
                                     <button 
                                         onClick={() => navigate('/client/generator', { 
                                             state: { 
-                                                instruction: `Write a high-converting email campaign specifically targeting the "${seg.name}" segment.\n\nTarget Audience Profile: ${seg.description}\n\nMarketing Angle to use: ${seg.marketing_angle}\n\nKey Criteria: ${seg.criteria}`
+                                                instruction: `Act as an expert email marketer. Write a personalized, high-converting email campaign for the "${seg.name}" customer segment.\n\n**Segment Profile:** ${seg.description}\n**Strategic Angle:** ${seg.marketing_angle}\n**Technical Criteria:** ${seg.criteria}\n\nThe goal is to maximize engagement based on their specific profile.`
                                             } 
                                         })}
-                                        className="w-full mt-2 flex items-center justify-center gap-2 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors"
+                                        className="w-full mt-2 flex items-center justify-center gap-2 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-medium hover:bg-indigo-100 transition-colors group"
                                     >
-                                        <Sparkles size={14} />
+                                        <Sparkles size={14} className="group-hover:scale-110 transition-transform" />
                                         Draft Campaign
                                     </button>
                                 </div>
