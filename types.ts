@@ -1,3 +1,4 @@
+import React from 'react';
 
 export type UserRole = 'admin' | 'client';
 
@@ -69,4 +70,49 @@ export interface UsageMetric {
   date: string;
   emailsGenerated: number;
   emailsSent: number;
+}
+
+// Module Augmentation for react-router-dom to fix missing type definitions
+declare module 'react-router-dom' {
+  export interface LinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
+    to: string | object;
+    replace?: boolean;
+    state?: any;
+    className?: string;
+  }
+  export const Link: React.FC<LinkProps>;
+
+  export interface RouteProps {
+    path?: string;
+    element?: React.ReactNode;
+    index?: boolean;
+    children?: React.ReactNode;
+  }
+  export const Route: React.FC<RouteProps>;
+
+  export const Routes: React.FC<{ children: React.ReactNode }>;
+  export const HashRouter: React.FC<{ children: React.ReactNode }>;
+  
+  export interface NavigateProps {
+    to: string | object;
+    replace?: boolean;
+    state?: any;
+  }
+  export const Navigate: React.FC<NavigateProps>;
+
+  export function useNavigate(): (to: string | number, options?: { replace?: boolean; state?: any }) => void;
+  
+  export function useLocation(): {
+    pathname: string;
+    search: string;
+    hash: string;
+    state: any;
+    key: string;
+  };
+
+  export function useParams<K extends string = string>(): Readonly<Record<K, string | undefined>>;
+
+  export function useSearchParams(
+    defaultInit?: any
+  ): [URLSearchParams, (nextInit?: any, navigateOpts?: any) => void];
 }
