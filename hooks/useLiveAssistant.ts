@@ -1,13 +1,13 @@
+
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { GoogleGenAI, LiveServerMessage, Modality } from '@google/genai';
 import { base64ToUint8Array, decodeAudioData, createPcmBlob } from '../utils/audioUtils';
 
 interface UseLiveAssistantProps {
-  apiKey: string;
   systemInstruction?: string;
 }
 
-export const useLiveAssistant = ({ apiKey, systemInstruction }: UseLiveAssistantProps) => {
+export const useLiveAssistant = ({ systemInstruction }: UseLiveAssistantProps) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false); // Model is speaking
   const [volume, setVolume] = useState(0); // For visualizer
@@ -18,14 +18,12 @@ export const useLiveAssistant = ({ apiKey, systemInstruction }: UseLiveAssistant
   const outputAudioContextRef = useRef<AudioContext | null>(null);
   const inputSourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const sessionRef = useRef<any>(null); // Holds the LiveSession object
+  const sessionRef = useRef<Promise<any> | null>(null); // Holds the LiveSession Promise
   const nextStartTimeRef = useRef<number>(0);
   const audioQueueRef = useRef<AudioBufferSourceNode[]>([]);
   const analyzerRef = useRef<AnalyserNode | null>(null);
   const volumeIntervalRef = useRef<number | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-
-  const ai = new GoogleGenAI({ apiKey });
 
   // Initialize Audio Contexts
   const initAudioContexts = () => {
@@ -49,8 +47,9 @@ export const useLiveAssistant = ({ apiKey, systemInstruction }: UseLiveAssistant
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.0-flash-exp',
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         config: {
           responseModalities: [Modality.AUDIO],
           systemInstruction: systemInstruction,
@@ -75,11 +74,11 @@ export const useLiveAssistant = ({ apiKey, systemInstruction }: UseLiveAssistant
                source.connect(analyzer);
                analyzerRef.current = analyzer;
 
-               processor.onaudioprocess = (e) => {
-                 const inputData = e.inputBuffer.getChannelData(0);
+               processor.onaudioprocess = (audioProcessingEvent) => {
+                 const inputData = audioProcessingEvent.inputBuffer.getChannelData(0);
                  const pcmBlob = createPcmBlob(inputData);
                  
-                 // Send to Gemini
+                 // Fix: Solely rely on sessionPromise resolves and then call `session.sendRealtimeInput`
                  sessionPromise.then((session) => {
                    session.sendRealtimeInput({ media: pcmBlob });
                  });
@@ -147,8 +146,12 @@ export const useLiveAssistant = ({ apiKey, systemInstruction }: UseLiveAssistant
           },
           onerror: (err) => {
             console.error('Gemini Live Error', err);
-            setError(err.message || "The service is currently unavailable.");
-            setIsConnected(false);
+            // Only update error state if we were previously connected or trying to connect
+            // This avoids showing errors during cleanup/logout
+            if (sessionRef.current) {
+                setError(err.message || "The service is currently unavailable.");
+                setIsConnected(false);
+            }
           }
         }
       });
@@ -172,15 +175,19 @@ export const useLiveAssistant = ({ apiKey, systemInstruction }: UseLiveAssistant
       setError(err.message || "Failed to connect to microphone or API");
       setIsConnected(false);
     }
-  }, [apiKey, systemInstruction]);
+  }, [systemInstruction]);
 
   const disconnect = useCallback(async () => {
-    // 1. Close Session
+    // 1. Close Live API Session
     if (sessionRef.current) {
-        // There isn't a direct .close() on the promise wrapper in the SDK typically, 
-        // but we stop sending data by disconnecting the script processor.
-        // If the SDK supported explicit close on the wrapper, we'd call it.
-        // For now, we clean up the audio nodes which effectively stops the session interaction.
+        try {
+            const session = await sessionRef.current;
+            // Clear ref first to prevent onerror loops
+            sessionRef.current = null;
+            session.close();
+        } catch (e) {
+            console.log("Error closing session", e);
+        }
     }
 
     // 2. Stop Microphone Stream
@@ -190,10 +197,14 @@ export const useLiveAssistant = ({ apiKey, systemInstruction }: UseLiveAssistant
     }
 
     // 3. Disconnect Audio Nodes
-    if (inputSourceRef.current) inputSourceRef.current.disconnect();
+    if (inputSourceRef.current) {
+        inputSourceRef.current.disconnect();
+        inputSourceRef.current = null;
+    }
     if (processorRef.current) {
         processorRef.current.disconnect();
         processorRef.current.onaudioprocess = null;
+        processorRef.current = null;
     }
     
     // 4. Clear Audio Queue
@@ -206,6 +217,7 @@ export const useLiveAssistant = ({ apiKey, systemInstruction }: UseLiveAssistant
     // 5. Cleanup Animation Frame
     if (volumeIntervalRef.current) {
         cancelAnimationFrame(volumeIntervalRef.current);
+        volumeIntervalRef.current = null;
     }
 
     setIsConnected(false);
@@ -217,8 +229,14 @@ export const useLiveAssistant = ({ apiKey, systemInstruction }: UseLiveAssistant
   useEffect(() => {
     return () => {
         disconnect();
-        if (inputAudioContextRef.current) inputAudioContextRef.current.close();
-        if (outputAudioContextRef.current) outputAudioContextRef.current.close();
+        if (inputAudioContextRef.current) {
+            inputAudioContextRef.current.close();
+            inputAudioContextRef.current = null;
+        }
+        if (outputAudioContextRef.current) {
+            outputAudioContextRef.current.close();
+            outputAudioContextRef.current = null;
+        }
     };
   }, [disconnect]);
 

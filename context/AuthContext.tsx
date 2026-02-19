@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
 import { MockBackend } from '../services/mockBackend';
@@ -6,8 +7,10 @@ interface AuthContextType {
   user: User | null;
   isLoading: boolean;
   login: (email: string, password?: string) => Promise<void>;
-  register: (name: string, email: string, businessName: string, password: string) => Promise<void>;
+  loginWithGoogle: () => Promise<void>;
+  register: (name: string, email: string, businessName: string, password: string, plan?: 'basic'|'pro'|'enterprise', language?: string, industry?: string, description?: string, website?: string) => Promise<void>;
   logout: () => void;
+  markTutorialSeen: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -43,10 +46,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const register = async (name: string, email: string, businessName: string, password: string) => {
+  const loginWithGoogle = async () => {
     setIsLoading(true);
     try {
-      const newUser = await MockBackend.register(name, email, businessName, password);
+      const foundUser = await MockBackend.loginWithGoogle();
+      if (foundUser) {
+        setUser(foundUser);
+        localStorage.setItem('qorvyn_session', JSON.stringify(foundUser));
+      }
+    } catch (error) {
+      console.error(error);
+      alert('Google Login failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const register = async (name: string, email: string, businessName: string, password: string, plan: 'basic'|'pro'|'enterprise' = 'basic', language: string = 'English', industry: string = 'General Business', description: string = '', website: string = '') => {
+    setIsLoading(true);
+    try {
+      const newUser = await MockBackend.register(name, email, businessName, password, plan, language, industry, description, website);
       setUser(newUser);
       localStorage.setItem('qorvyn_session', JSON.stringify(newUser));
     } catch (error: any) {
@@ -62,8 +81,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('qorvyn_session');
   };
 
+  const markTutorialSeen = async () => {
+      if (user) {
+          await MockBackend.markTutorialSeen(user.id);
+          const updatedUser = { ...user, settings: { ...user.settings, seenTutorial: true } };
+          setUser(updatedUser);
+          localStorage.setItem('qorvyn_session', JSON.stringify(updatedUser));
+      }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, isLoading, login, loginWithGoogle, register, logout, markTutorialSeen }}>
       {children}
     </AuthContext.Provider>
   );

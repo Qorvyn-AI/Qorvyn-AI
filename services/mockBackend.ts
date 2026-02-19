@@ -1,437 +1,442 @@
-import { User, Client, Contact, EmailCampaign, WiFiPortalConfig } from '../types';
+import { User, Client, Contact, EmailCampaign, WiFiPortalConfig, StrategyItem, SupportTicket } from '../types';
 
-// Initial Seed Data
-const SEED_CLIENTS: Client[] = [
-  { 
-    id: 'c1', 
-    name: 'Acme Corp', 
-    status: 'active', 
-    plan: 'pro', 
-    contactCount: 150, 
-    aiUsageCount: 45, 
-    lastLogin: new Date().toISOString(),
-    nextBillingDate: new Date(Date.now() + 86400000 * 15).toISOString(),
-    lastPaymentStatus: 'paid',
-    wifiPortalConfig: {
-      headline: "Welcome to Acme Wi-Fi",
-      subheadline: "Sign in to get connected",
-      buttonText: "Connect to Internet",
-      backgroundColor: "#ffffff",
-      accentColor: "#4f46e5",
-      requirePhone: false,
-      termsText: "I accept the Terms of Service and Privacy Policy."
-    }
-  },
-  { 
-    id: 'c2', 
-    name: 'Bakery Delights', 
-    status: 'active', 
-    plan: 'basic', 
-    contactCount: 45, 
-    aiUsageCount: 12, 
-    lastLogin: new Date().toISOString(),
-    nextBillingDate: new Date(Date.now() + 86400000 * 5).toISOString(),
-    lastPaymentStatus: 'paid'
-  },
-  { 
-    id: 'c3', 
-    name: 'TechStart Inc', 
-    status: 'disabled', 
-    plan: 'enterprise', 
-    contactCount: 1200, 
-    aiUsageCount: 0, 
-    lastLogin: new Date(Date.now() - 86400000 * 10).toISOString(),
-    nextBillingDate: new Date(Date.now() + 86400000 * 20).toISOString(),
-    lastPaymentStatus: 'overdue'
-  },
-];
-
-const SEED_USERS: User[] = [
-  { id: 'u1', email: 'admin@qorvyn.com', name: 'Super Admin', role: 'admin', password: 'password' },
-  { id: 'u2', email: 'user@acme.com', name: 'John Doe', role: 'client', clientId: 'c1', password: 'password' },
-  { id: 'u3', email: 'baker@delights.com', name: 'Sarah Baker', role: 'client', clientId: 'c2', password: 'password' },
-];
-
-const SEED_CONTACTS: Contact[] = [
-  { id: 'ct1', clientId: 'c1', email: 'cust1@gmail.com', name: 'Alice Smith', brevoId: 'b_1', source: 'brevo', engagementScore: 85, lastActive: new Date().toISOString(), location: 'New York, USA', jobTitle: 'Marketing Manager' },
-  { id: 'ct2', clientId: 'c1', email: 'cust2@yahoo.com', name: 'Bob Jones', brevoId: 'b_2', source: 'brevo', engagementScore: 30, lastActive: new Date(Date.now() - 86400000 * 45).toISOString(), location: 'London, UK', jobTitle: 'Developer' },
-  { id: 'ct3', clientId: 'c2', email: 'eater1@gmail.com', name: 'Charlie Day', brevoId: 'b_3', source: 'brevo', engagementScore: 60, lastActive: new Date(Date.now() - 86400000 * 5).toISOString(), location: 'Austin, TX', jobTitle: 'Food Critic' },
-];
-
-const SEED_EMAILS: EmailCampaign[] = [
-  { 
-    id: 'e1', 
-    clientId: 'c1', 
-    subject: 'Weekend Sale! 20% Off Everything', 
-    content: 'Get 20% off...', 
-    status: 'sent', 
-    deliveryStatus: 'success',
-    createdAt: new Date(Date.now() - 86400000 * 2).toISOString(), 
-    sentAt: new Date(Date.now() - 86400000).toISOString(),
-    type: 'newsletter',
-    openRate: 45.2,
-    clickRate: 12.5
-  },
-  { 
-    id: 'e2', 
-    clientId: 'c1', 
-    subject: 'Introducing Our New Product Line', 
-    content: 'Introducing...', 
-    status: 'sent', 
-    deliveryStatus: 'pending',
-    createdAt: new Date(Date.now() - 3600000).toISOString(), 
-    sentAt: new Date().toISOString(),
-    type: 'newsletter',
-    openRate: 28.4,
-    clickRate: 5.1
-  },
-  { 
-    id: 'e3', 
-    clientId: 'c1', 
-    subject: 'Monthly Newsletter: Industry Insights', 
-    content: 'Here is what happened...', 
-    status: 'sent', 
-    deliveryStatus: 'failed',
-    createdAt: new Date(Date.now() - 86400000 * 5).toISOString(), 
-    sentAt: new Date(Date.now() - 86400000 * 4).toISOString(),
-    type: 'newsletter',
-    openRate: 15.0,
-    clickRate: 1.2
-  },
-];
-
-// LocalStorage Keys
 const KEYS = {
   USERS: 'qorvyn_users',
   CLIENTS: 'qorvyn_clients',
   CONTACTS: 'qorvyn_contacts',
   EMAILS: 'qorvyn_emails',
+  SUPPORT: 'qorvyn_support'
 };
 
-// Helper to initialize DB
-const initDB = () => {
-  if (!localStorage.getItem(KEYS.USERS)) localStorage.setItem(KEYS.USERS, JSON.stringify(SEED_USERS));
-  if (!localStorage.getItem(KEYS.CLIENTS)) localStorage.setItem(KEYS.CLIENTS, JSON.stringify(SEED_CLIENTS));
-  if (!localStorage.getItem(KEYS.CONTACTS)) localStorage.setItem(KEYS.CONTACTS, JSON.stringify(SEED_CONTACTS));
-  if (!localStorage.getItem(KEYS.EMAILS)) localStorage.setItem(KEYS.EMAILS, JSON.stringify(SEED_EMAILS));
+const getFromStorage = <T>(key: string, defaultValue: T): T => {
+  const stored = localStorage.getItem(key);
+  return stored ? JSON.parse(stored) : defaultValue;
 };
 
-initDB();
+const setToStorage = (key: string, value: any) => {
+  localStorage.setItem(key, JSON.stringify(value));
+};
 
-// --- Data Access Layer ---
+// Seed initial data if empty
+const seedData = () => {
+    // Check if we need to seed
+    if (!localStorage.getItem(KEYS.USERS)) {
+        // Create Admin User
+        const adminUser: User = {
+            id: 'u_admin',
+            email: 'admin@qorvyn.com',
+            name: 'System Admin',
+            role: 'admin',
+            password: 'password'
+        };
+        
+        // Create Client Users & Clients
+        const client1: Client = {
+            id: 'c_acme',
+            name: 'Acme Corp',
+            industry: 'SaaS',
+            status: 'active',
+            plan: 'pro',
+            contactCount: 1250,
+            aiUsageCount: 45,
+            lastLogin: new Date().toISOString(),
+            nextBillingDate: new Date(Date.now() + 86400000 * 15).toISOString(),
+            lastPaymentStatus: 'paid',
+            wifiPortalConfig: {
+                headline: 'Welcome to Acme HQ',
+                subheadline: 'Secure Guest Network',
+                buttonText: 'Connect Now',
+                backgroundColor: '#ffffff',
+                accentColor: '#4f46e5',
+                requirePhone: false,
+                termsText: 'By connecting, you agree to our Acceptable Use Policy.'
+            }
+        };
+        const user1: User = {
+            id: 'u_jane',
+            email: 'jane@acme.com',
+            name: 'Jane Doe',
+            role: 'client',
+            clientId: 'c_acme',
+            password: 'password'
+        };
+
+        const client2: Client = {
+            id: 'c_urban',
+            name: 'Urban Vogue',
+            industry: 'Retail',
+            status: 'active',
+            plan: 'basic',
+            contactCount: 300,
+            aiUsageCount: 12,
+            lastLogin: new Date().toISOString(),
+            nextBillingDate: new Date(Date.now() + 86400000 * 5).toISOString(),
+            lastPaymentStatus: 'paid'
+        };
+        const user2: User = {
+            id: 'u_sarah',
+            email: 'sarah@urbanvogue.com',
+            name: 'Sarah Smith',
+            role: 'client',
+            clientId: 'c_urban',
+            password: 'password'
+        };
+
+        const client3: Client = {
+            id: 'c_iron',
+            name: 'Iron Pulse Gym',
+            industry: 'Fitness',
+            status: 'active',
+            plan: 'enterprise',
+            contactCount: 2100,
+            aiUsageCount: 112,
+            lastLogin: new Date().toISOString(),
+            nextBillingDate: new Date(Date.now() + 86400000 * 25).toISOString(),
+            lastPaymentStatus: 'paid'
+        };
+        const user3: User = {
+            id: 'u_mike',
+            email: 'mike@ironpulse.com',
+            name: 'Mike Strong',
+            role: 'client',
+            clientId: 'c_iron',
+            password: 'password'
+        };
+
+        const client4: Client = {
+            id: 'c_skyline',
+            name: 'Skyline Architects',
+            industry: 'Real Estate',
+            status: 'active',
+            plan: 'pro',
+            contactCount: 850,
+            aiUsageCount: 22,
+            lastLogin: new Date().toISOString(),
+            nextBillingDate: new Date(Date.now() + 86400000 * 2).toISOString(),
+            lastPaymentStatus: 'paid'
+        };
+        const user4: User = {
+            id: 'u_david',
+            email: 'david@skyline.com',
+            name: 'David Sky',
+            role: 'client',
+            clientId: 'c_skyline',
+            password: 'password'
+        };
+
+        const client5: Client = {
+            id: 'c_lumina',
+            name: 'Lumina Bistro',
+            industry: 'Restaurant & Food',
+            status: 'active',
+            plan: 'basic',
+            contactCount: 450,
+            aiUsageCount: 5,
+            lastLogin: new Date().toISOString(),
+            nextBillingDate: new Date(Date.now() - 86400000 * 1).toISOString(),
+            lastPaymentStatus: 'pending'
+        };
+        const user5: User = {
+            id: 'u_chef',
+            email: 'chef@lumina.com',
+            name: 'Head Chef',
+            role: 'client',
+            clientId: 'c_lumina',
+            password: 'password'
+        };
+
+        setToStorage(KEYS.USERS, [adminUser, user1, user2, user3, user4, user5]);
+        setToStorage(KEYS.CLIENTS, [client1, client2, client3, client4, client5]);
+    }
+};
+
+seedData();
 
 export const MockBackend = {
   // Auth
   login: async (email: string, password?: string): Promise<User | null> => {
-    // Simulate network delay
-    await new Promise(r => setTimeout(r, 800)); 
-    const users: User[] = JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
-    // Simple match
-    return users.find(u => u.email === email && (!password || u.password === password)) || null;
-  },
-
-  register: async (name: string, email: string, businessName: string, password: string): Promise<User> => {
-    await new Promise(r => setTimeout(r, 1000));
-    
-    const users: User[] = JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
-    if (users.find(u => u.email === email)) {
-      throw new Error("User already exists");
+    const users = getFromStorage<User[]>(KEYS.USERS, []);
+    const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    if (user) {
+        // In a real app, verify password hash. Here just mock check if provided.
+        if (password && user.password && password !== user.password) return null;
+        return user;
     }
-
-    const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-    
-    // 1. Create Client (Business)
-    const newClientId = `c_${Date.now()}`;
-    const newClient: Client = {
-      id: newClientId,
-      name: businessName,
-      status: 'active',
-      plan: 'basic',
-      contactCount: 0,
-      aiUsageCount: 0,
-      lastLogin: new Date().toISOString(),
-      nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      lastPaymentStatus: 'pending',
-      wifiPortalConfig: {
-        headline: `Welcome to ${businessName}`,
-        subheadline: "Sign in for free high-speed internet",
-        buttonText: "Connect Now",
-        backgroundColor: "#ffffff",
-        accentColor: "#4f46e5",
-        requirePhone: false,
-        termsText: "I agree to the Terms of Service."
-      }
-    };
-
-    // 2. Create User
-    const newUser: User = {
-      id: `u_${Date.now()}`,
-      email,
-      name,
-      role: 'client',
-      clientId: newClientId,
-      password: password
-    };
-
-    // Save
-    localStorage.setItem(KEYS.CLIENTS, JSON.stringify([...clients, newClient]));
-    localStorage.setItem(KEYS.USERS, JSON.stringify([...users, newUser]));
-
-    return newUser;
+    return null;
+  },
+  
+  loginWithGoogle: async (): Promise<User | null> => {
+      // Simulate Google Login success for demo
+      // In a real app, this would verify token
+      const users = getFromStorage<User[]>(KEYS.USERS, []);
+      // Just return the first client user found or create a dummy one
+      const existing = users.find(u => u.email === 'jane@acme.com');
+      return existing || null;
   },
 
-  // Admin: Get all clients
-  getClients: async (): Promise<Client[]> => {
-    return JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
+  register: async (name: string, email: string, businessName: string, password: string, plan: any, language: string, industry: string, description: string, website: string): Promise<User> => {
+      const users = getFromStorage<User[]>(KEYS.USERS, []);
+      if (users.find(u => u.email === email)) throw new Error("Email already exists");
+
+      const clientId = `c_${Date.now()}`;
+      const newClient: Client = {
+          id: clientId,
+          name: businessName,
+          industry,
+          website,
+          businessDescription: description,
+          status: 'active',
+          plan,
+          contactCount: 0,
+          aiUsageCount: 0,
+          lastLogin: new Date().toISOString(),
+          nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          lastPaymentStatus: 'paid',
+          settings: {
+              preferredLanguage: language,
+              uiLanguage: 'English'
+          }
+      };
+
+      const newUser: User = {
+          id: `u_${Date.now()}`,
+          email,
+          name,
+          role: 'client',
+          clientId,
+          password
+      };
+
+      const clients = getFromStorage<Client[]>(KEYS.CLIENTS, []);
+      setToStorage(KEYS.CLIENTS, [...clients, newClient]);
+      setToStorage(KEYS.USERS, [...users, newUser]);
+
+      return newUser;
   },
 
-  // Admin: Create Client
-  createClient: async (name: string, plan: 'basic' | 'pro' | 'enterprise', email: string): Promise<Client> => {
-    await new Promise(r => setTimeout(r, 800)); // Simulate delay
-    const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-    const users: User[] = JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
-
-    const newClientId = `c_${Date.now()}`;
-    const newClient: Client = {
-      id: newClientId,
-      name,
-      status: 'active',
-      plan,
-      contactCount: 0,
-      aiUsageCount: 0,
-      lastLogin: new Date().toISOString(),
-      nextBillingDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-      lastPaymentStatus: 'pending',
-      wifiPortalConfig: {
-        headline: `Welcome to ${name}`,
-        subheadline: "Sign in for free high-speed internet",
-        buttonText: "Connect Now",
-        backgroundColor: "#ffffff",
-        accentColor: "#4f46e5",
-        requirePhone: false,
-        termsText: "I agree to the Terms of Service."
-      }
-    };
-
-    const newUser: User = {
-      id: `u_${Date.now()}`,
-      email,
-      name: `Admin ${name}`,
-      role: 'client',
-      clientId: newClientId,
-      password: 'password' // Default password for admin created accounts
-    };
-
-    localStorage.setItem(KEYS.CLIENTS, JSON.stringify([...clients, newClient]));
-    localStorage.setItem(KEYS.USERS, JSON.stringify([...users, newUser]));
-
-    return newClient;
+  markTutorialSeen: async (userId: string) => {
+      const users = getFromStorage<User[]>(KEYS.USERS, []);
+      const updated = users.map(u => u.id === userId ? { ...u, settings: { ...u.settings, seenTutorial: true } } : u);
+      setToStorage(KEYS.USERS, updated);
   },
 
-  // Admin: Toggle client status
-  toggleClientStatus: async (clientId: string): Promise<void> => {
-    const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-    const updated = clients.map(c => c.id === clientId ? { ...c, status: c.status === 'active' ? 'disabled' : 'active' as any } : c);
-    localStorage.setItem(KEYS.CLIENTS, JSON.stringify(updated));
+  // Clients
+  getClients: async (): Promise<Client[]> => getFromStorage<Client[]>(KEYS.CLIENTS, []),
+  
+  getClientById: async (id: string): Promise<Client | undefined> => {
+      const clients = getFromStorage<Client[]>(KEYS.CLIENTS, []);
+      return clients.find(c => c.id === id);
   },
 
-  // Admin: Update Client Plan
-  updateClientPlan: async (clientId: string, newPlan: 'basic' | 'pro' | 'enterprise'): Promise<void> => {
-    const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-    const updated = clients.map(c => c.id === clientId ? { ...c, plan: newPlan } : c);
-    localStorage.setItem(KEYS.CLIENTS, JSON.stringify(updated));
+  updateClient: async (clientId: string, data: Partial<Client>) => {
+      const clients = getFromStorage<Client[]>(KEYS.CLIENTS, []);
+      const updated = clients.map(c => c.id === clientId ? { ...c, ...data } : c);
+      setToStorage(KEYS.CLIENTS, updated);
   },
 
-  // Admin: Update Client Details (Name, etc.)
-  updateClient: async (clientId: string, updates: Partial<Client>): Promise<void> => {
-    const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-    const updated = clients.map(c => c.id === clientId ? { ...c, ...updates } : c);
-    localStorage.setItem(KEYS.CLIENTS, JSON.stringify(updated));
+  deleteClient: async (clientId: string) => {
+      const clients = getFromStorage<Client[]>(KEYS.CLIENTS, []);
+      setToStorage(KEYS.CLIENTS, clients.filter(c => c.id !== clientId));
+      
+      // Also delete associated users
+      const users = getFromStorage<User[]>(KEYS.USERS, []);
+      setToStorage(KEYS.USERS, users.filter(u => u.clientId !== clientId));
   },
 
-  // Admin: Delete Client
-  deleteClient: async (clientId: string): Promise<void> => {
-    await new Promise(r => setTimeout(r, 500));
-    const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-    const newClients = clients.filter(c => c.id !== clientId);
-    localStorage.setItem(KEYS.CLIENTS, JSON.stringify(newClients));
-
-    // Cleanup users
-    const users: User[] = JSON.parse(localStorage.getItem(KEYS.USERS) || '[]');
-    const newUsers = users.filter(u => u.clientId !== clientId);
-    localStorage.setItem(KEYS.USERS, JSON.stringify(newUsers));
+  // Users
+  getPrimaryUserForClient: async (clientId: string): Promise<User | undefined> => {
+      const users = getFromStorage<User[]>(KEYS.USERS, []);
+      return users.find(u => u.clientId === clientId); // Assuming first user is primary
   },
 
-  // Client: Get own data
-  getClientById: async (clientId: string): Promise<Client | undefined> => {
-    const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-    return clients.find(c => c.id === clientId);
+  adminUpdateUser: async (userId: string, data: Partial<User>) => {
+      const users = getFromStorage<User[]>(KEYS.USERS, []);
+      const updated = users.map(u => u.id === userId ? { ...u, ...data } : u);
+      setToStorage(KEYS.USERS, updated);
   },
 
-  // WIFI PORTAL METHODS
-  getWifiSettings: async (clientId: string): Promise<WiFiPortalConfig | undefined> => {
-    const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-    const client = clients.find(c => c.id === clientId);
-    return client?.wifiPortalConfig;
-  },
-
-  updateWifiSettings: async (clientId: string, config: WiFiPortalConfig): Promise<void> => {
-    const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-    const updatedClients = clients.map(c => c.id === clientId ? { ...c, wifiPortalConfig: config } : c);
-    localStorage.setItem(KEYS.CLIENTS, JSON.stringify(updatedClients));
-  },
-
+  // Contacts
   getContacts: async (clientId: string): Promise<Contact[]> => {
-    const contacts: Contact[] = JSON.parse(localStorage.getItem(KEYS.CONTACTS) || '[]');
-    return contacts.filter(c => c.clientId === clientId);
+      const contacts = getFromStorage<Contact[]>(KEYS.CONTACTS, []);
+      return contacts.filter(c => c.clientId === clientId);
   },
 
-  // Client: Add manual contact (Updated to support phone and source)
-  addContact: async (clientId: string, name: string, email: string, phone?: string, source: 'manual' | 'wifi_portal' = 'manual'): Promise<Contact> => {
-    await new Promise(r => setTimeout(r, 500));
-    const contacts: Contact[] = JSON.parse(localStorage.getItem(KEYS.CONTACTS) || '[]');
-    
-    // Check if exists
-    const existing = contacts.find(c => c.email.toLowerCase() === email.toLowerCase() && c.clientId === clientId);
-    if (existing) {
-        // Update existing contact lastActive
-        const updatedContacts = contacts.map(c => 
-            c.id === existing.id ? { ...c, lastActive: new Date().toISOString(), phone: phone || c.phone } : c
-        );
-        localStorage.setItem(KEYS.CONTACTS, JSON.stringify(updatedContacts));
-        return existing;
-    }
+  addContact: async (clientId: string, contactData: Partial<Contact>) => {
+      const contacts = getFromStorage<Contact[]>(KEYS.CONTACTS, []);
+      const newContact = { 
+          ...contactData, 
+          id: `ct_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`, 
+          clientId, 
+          createdAt: new Date().toISOString(), 
+          source: contactData.source || 'manual' 
+      } as Contact;
+      
+      setToStorage(KEYS.CONTACTS, [...contacts, newContact]);
+      
+      // Update client contact count
+      const clients = getFromStorage<Client[]>(KEYS.CLIENTS, []);
+      const updatedClients = clients.map(c => c.id === clientId ? { ...c, contactCount: (c.contactCount || 0) + 1 } : c);
+      setToStorage(KEYS.CLIENTS, updatedClients);
 
-    const newContact: Contact = {
-      id: `ct_${Date.now()}`,
-      clientId,
-      email,
-      name,
-      phone,
-      brevoId: `local_${Date.now()}`,
-      source,
-      engagementScore: 50, // Default start score
-      lastActive: new Date().toISOString(),
-      location: 'Unknown',
-      jobTitle: 'Unknown'
-    };
-
-    localStorage.setItem(KEYS.CONTACTS, JSON.stringify([...contacts, newContact]));
-    
-    // Update client count
-    const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-    const updatedClients = clients.map(c => c.id === clientId ? {...c, contactCount: c.contactCount + 1} : c);
-    localStorage.setItem(KEYS.CLIENTS, JSON.stringify(updatedClients));
-
-    return newContact;
+      return newContact;
   },
 
-  // Simulate Brevo Sync
-  syncBrevoContacts: async (clientId: string, apiKey?: string): Promise<number> => {
-    await new Promise(r => setTimeout(r, 1500)); // Longer delay for "API call"
-    
-    if (apiKey && apiKey.length < 10) {
-        throw new Error("Invalid API Key format");
-    }
-
-    const locations = ['New York, USA', 'London, UK', 'Toronto, CA', 'Berlin, DE', 'San Francisco, USA'];
-    const jobs = ['CEO', 'Manager', 'Developer', 'Designer', 'Consultant'];
-
-    const newContacts: Contact[] = Array.from({ length: 5 }).map((_, i) => ({
-      id: `new_${Date.now()}_${i}`,
-      clientId,
-      email: `brevo_user_${Math.floor(Math.random() * 1000)}@example.com`,
-      name: `Brevo Customer ${Math.floor(Math.random() * 100)}`,
-      brevoId: `brevo_${Date.now()}_${i}`,
-      source: 'brevo',
-      engagementScore: Math.floor(Math.random() * 100),
-      lastActive: new Date(Date.now() - Math.floor(Math.random() * 10000000000)).toISOString(),
-      location: locations[Math.floor(Math.random() * locations.length)],
-      jobTitle: jobs[Math.floor(Math.random() * jobs.length)]
-    }));
-    
-    const contacts: Contact[] = JSON.parse(localStorage.getItem(KEYS.CONTACTS) || '[]');
-    localStorage.setItem(KEYS.CONTACTS, JSON.stringify([...contacts, ...newContacts]));
-    
-    // Update client count
-    const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-    const updatedClients = clients.map(c => c.id === clientId ? {...c, contactCount: c.contactCount + 5} : c);
-    localStorage.setItem(KEYS.CLIENTS, JSON.stringify(updatedClients));
-
-    return 5;
+  deleteContact: async (clientId: string, contactId: string) => {
+      const contacts = getFromStorage<Contact[]>(KEYS.CONTACTS, []);
+      setToStorage(KEYS.CONTACTS, contacts.filter(c => c.id !== contactId));
+      
+      // Update client contact count
+      const clients = getFromStorage<Client[]>(KEYS.CLIENTS, []);
+      const updatedClients = clients.map(c => c.id === clientId ? { ...c, contactCount: Math.max(0, (c.contactCount || 0) - 1) } : c);
+      setToStorage(KEYS.CLIENTS, updatedClients);
   },
 
+  // Emails
   getEmails: async (clientId: string): Promise<EmailCampaign[]> => {
-    const emails: EmailCampaign[] = JSON.parse(localStorage.getItem(KEYS.EMAILS) || '[]');
-    
-    // Simulate background job: Check for scheduled emails that should be sent
-    const now = new Date();
-    let hasUpdates = false;
-    const updatedEmails = emails.map(email => {
-        if (email.status === 'scheduled' && email.scheduledAt && new Date(email.scheduledAt) <= now) {
-            hasUpdates = true;
-            return { 
-                ...email, 
-                status: 'sent' as const, 
-                deliveryStatus: 'success' as const,
-                sentAt: email.scheduledAt,
-                // Simulate stats generation on send
-                openRate: parseFloat((Math.random() * 60).toFixed(1)),
-                clickRate: parseFloat((Math.random() * 20).toFixed(1))
-            };
-        }
-        return email;
-    });
-
-    if (hasUpdates) {
-        localStorage.setItem(KEYS.EMAILS, JSON.stringify(updatedEmails));
-    }
-
-    return updatedEmails.filter(e => e.clientId === clientId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      const emails = getFromStorage<EmailCampaign[]>(KEYS.EMAILS, []);
+      return emails.filter(e => e.clientId === clientId).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   },
 
-  saveEmail: async (email: Omit<EmailCampaign, 'id' | 'createdAt'>): Promise<EmailCampaign> => {
-    const emails: EmailCampaign[] = JSON.parse(localStorage.getItem(KEYS.EMAILS) || '[]');
-    const isSent = email.status === 'sent';
-    const newEmail: EmailCampaign = {
-      ...email,
-      id: `e_${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      // Simulate stats if sent immediately
-      openRate: isSent ? parseFloat((Math.random() * 60).toFixed(1)) : undefined,
-      clickRate: isSent ? parseFloat((Math.random() * 20).toFixed(1)) : undefined
-    };
-    localStorage.setItem(KEYS.EMAILS, JSON.stringify([...emails, newEmail]));
-
-    // Update AI usage if it was generated
-    if (email.prompt) {
-        const clients: Client[] = JSON.parse(localStorage.getItem(KEYS.CLIENTS) || '[]');
-        const updatedClients = clients.map(c => c.id === email.clientId ? {...c, aiUsageCount: c.aiUsageCount + 1} : c);
-        localStorage.setItem(KEYS.CLIENTS, JSON.stringify(updatedClients));
-    }
-
-    return newEmail;
+  saveEmail: async (emailData: Partial<EmailCampaign>) => {
+      const emails = getFromStorage<EmailCampaign[]>(KEYS.EMAILS, []);
+      const newEmail = { 
+          ...emailData, 
+          id: `em_${Date.now()}`, 
+          createdAt: new Date().toISOString() 
+      } as EmailCampaign;
+      setToStorage(KEYS.EMAILS, [...emails, newEmail]);
+      return newEmail;
   },
 
-  updateEmail: async (email: Partial<EmailCampaign> & { id: string }): Promise<EmailCampaign> => {
-    const emails: EmailCampaign[] = JSON.parse(localStorage.getItem(KEYS.EMAILS) || '[]');
-    const index = emails.findIndex(e => e.id === email.id);
-    
-    if (index === -1) {
-       throw new Error("Email not found");
-    }
+  updateEmail: async (emailData: EmailCampaign) => {
+      const emails = getFromStorage<EmailCampaign[]>(KEYS.EMAILS, []);
+      const updated = emails.map(e => e.id === emailData.id ? emailData : e);
+      setToStorage(KEYS.EMAILS, updated);
+  },
 
-    const isNowSent = email.status === 'sent' && emails[index].status !== 'sent';
-    const updatedEmail = { 
-        ...emails[index], 
-        ...email,
-        // Add stats if status changed to sent
-        openRate: isNowSent ? parseFloat((Math.random() * 60).toFixed(1)) : emails[index].openRate,
-        clickRate: isNowSent ? parseFloat((Math.random() * 20).toFixed(1)) : emails[index].clickRate
-    };
-    emails[index] = updatedEmail;
-    localStorage.setItem(KEYS.EMAILS, JSON.stringify(emails));
+  // Wifi
+  getWifiSettings: async (clientId: string): Promise<WiFiPortalConfig | undefined> => {
+      const client = await MockBackend.getClientById(clientId);
+      return client?.wifiPortalConfig;
+  },
 
-    return updatedEmail;
+  updateWifiSettings: async (clientId: string, config: WiFiPortalConfig) => {
+      await MockBackend.updateClient(clientId, { wifiPortalConfig: config });
+  },
+
+  // Strategies (Stored on Client for now)
+  saveStrategy: async (clientId: string, strategy: StrategyItem) => {
+      const client = await MockBackend.getClientById(clientId);
+      if (client) {
+          const currentStrategies = client.growthChecklist || [];
+          // Check if update or new
+          const exists = currentStrategies.find(s => s.id === strategy.id);
+          let newStrategies;
+          if (exists) {
+              newStrategies = currentStrategies.map(s => s.id === strategy.id ? strategy : s);
+          } else {
+              newStrategies = [...currentStrategies, strategy];
+          }
+          await MockBackend.updateClient(clientId, { growthChecklist: newStrategies });
+      }
+  },
+
+  removeStrategy: async (clientId: string, strategyId: string) => {
+      const client = await MockBackend.getClientById(clientId);
+      if (client && client.growthChecklist) {
+          const newStrategies = client.growthChecklist.filter(s => s.id !== strategyId);
+          await MockBackend.updateClient(clientId, { growthChecklist: newStrategies });
+      }
+  },
+
+  toggleStrategyCompletion: async (clientId: string, strategyId: string) => {
+      const client = await MockBackend.getClientById(clientId);
+      if (client && client.growthChecklist) {
+          const newStrategies = client.growthChecklist.map(s => s.id === strategyId ? { ...s, completed: !s.completed } : s);
+          await MockBackend.updateClient(clientId, { growthChecklist: newStrategies });
+      }
+  },
+
+  // Support
+  getSupportTickets: async (clientId?: string): Promise<SupportTicket[]> => {
+      const tickets = getFromStorage<SupportTicket[]>(KEYS.SUPPORT, []);
+      if (clientId) {
+          return tickets.filter(t => t.clientId === clientId);
+      }
+      return tickets;
+  },
+
+  sendSupportMessage: async (clientId: string, clientName: string, text: string, subject: string) => {
+      const tickets = getFromStorage<SupportTicket[]>(KEYS.SUPPORT, []);
+      // Create new ticket for each message in this simple mock, or find active open ticket
+      // Let's create new if no subject provided, or assume new thread for simplicity in the UI context usually
+      
+      const newTicket: SupportTicket = {
+          id: `tk_${Date.now()}`,
+          clientId,
+          clientName,
+          subject,
+          status: 'open',
+          createdAt: new Date().toISOString(),
+          lastUpdatedAt: new Date().toISOString(),
+          messages: [{
+              id: `msg_${Date.now()}`,
+              sender: 'user',
+              senderName: clientName,
+              text,
+              timestamp: new Date().toISOString()
+          }]
+      };
+      
+      setToStorage(KEYS.SUPPORT, [...tickets, newTicket]);
+      return newTicket;
+  },
+
+  replyToTicket: async (ticketId: string, text: string, sender: 'user' | 'admin', senderName: string) => {
+      const tickets = getFromStorage<SupportTicket[]>(KEYS.SUPPORT, []);
+      const updated = tickets.map(t => {
+          if (t.id === ticketId) {
+              return {
+                  ...t,
+                  lastUpdatedAt: new Date().toISOString(),
+                  messages: [...t.messages, {
+                      id: `msg_${Date.now()}`,
+                      sender,
+                      senderName,
+                      text,
+                      timestamp: new Date().toISOString()
+                  }]
+              };
+          }
+          return t;
+      });
+      setToStorage(KEYS.SUPPORT, updated);
+  },
+
+  // Integrations
+  connectGmail: async (clientId: string) => {
+      // Mock connection
+      await MockBackend.updateClient(clientId, { 
+          settings: { googleIntegration: { connected: true, email: 'connected@gmail.com', connectedAt: new Date().toISOString() } } 
+      } as any); // Type casting for nested partial update simulation (logic needs to handle full object in real app)
+      
+      // In real implementation we'd merge deeply. Here we'll re-fetch to update properly
+      const client = await MockBackend.getClientById(clientId);
+      if (client && client.settings) {
+          const newSettings = { 
+              ...client.settings, 
+              googleIntegration: { connected: true, email: 'connected@gmail.com', connectedAt: new Date().toISOString() } 
+          };
+          await MockBackend.updateClient(clientId, { settings: newSettings });
+      }
+      return { email: 'connected@gmail.com' };
+  },
+
+  disconnectGmail: async (clientId: string) => {
+      const client = await MockBackend.getClientById(clientId);
+      if (client && client.settings) {
+          const newSettings = { ...client.settings, googleIntegration: { connected: false } };
+          await MockBackend.updateClient(clientId, { settings: newSettings });
+      }
   }
 };

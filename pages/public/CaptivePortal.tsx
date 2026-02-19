@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { MockBackend } from '../../services/mockBackend';
 import { WiFiPortalConfig } from '../../types';
-import { Wifi, CheckCircle, Loader2, Globe, ShieldCheck } from 'lucide-react';
+import { Wifi, CheckCircle, Loader2, Globe, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
 
 interface CaptivePortalProps {
   previewMode?: boolean;
@@ -15,7 +16,7 @@ export const CaptivePortal: React.FC<CaptivePortalProps> = ({
   previewConfig, 
   onClose 
 }) => {
-  const { clientId } = useParams<{ clientId: string }>();
+  const { clientId } = useParams();
   const [searchParams] = useSearchParams();
   const [config, setConfig] = useState<WiFiPortalConfig | null>(null);
   const [loading, setLoading] = useState(true);
@@ -106,12 +107,15 @@ export const CaptivePortal: React.FC<CaptivePortalProps> = ({
     if (!previewMode && clientId) {
         // Try to save if we are in the local environment
         try {
+           // Fix: Pass an object to addContact instead of multiple parameters
            await MockBackend.addContact(
              clientId, 
-             formData.name, 
-             formData.email, 
-             formData.phone, 
-             'wifi_portal'
+             {
+               name: formData.name,
+               email: formData.email,
+               phone: formData.phone,
+               source: 'wifi_portal'
+             }
            );
         } catch(e) {
             // Ignore errors in public demo mode (no backend)
@@ -131,12 +135,21 @@ export const CaptivePortal: React.FC<CaptivePortalProps> = ({
   );
   
   if (error || !config) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-gray-100 p-4 text-center">
-        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-4">
-            <Wifi size={32} className="text-red-500" />
+    <div className="h-screen flex flex-col items-center justify-center bg-gray-50 p-6 text-center animate-fade-in-up">
+        <div className="w-20 h-20 bg-red-50 rounded-[2rem] flex items-center justify-center mb-6 border border-red-100 shadow-sm">
+            <AlertCircle size={32} className="text-red-500" />
         </div>
-        <h1 className="text-xl font-bold text-gray-800">Connection Error</h1>
-        <p className="text-gray-600 mt-2">{error || "Configuration missing"}</p>
+        <h1 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Connection Failed</h1>
+        <p className="text-gray-500 font-medium max-w-xs mx-auto leading-relaxed mb-8">
+            {error || "We couldn't load the login portal configuration. Please check your internet connection."}
+        </p>
+        <button 
+            onClick={() => window.location.reload()} 
+            className="flex items-center gap-2 px-8 py-3 bg-white border border-gray-200 text-gray-900 rounded-2xl font-bold text-sm hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95"
+        >
+            <RefreshCw size={16} />
+            Retry Connection
+        </button>
     </div>
   );
 

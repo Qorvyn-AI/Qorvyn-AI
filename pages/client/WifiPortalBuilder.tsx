@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { MockBackend } from '../../services/mockBackend';
 import { useAuth } from '../../context/AuthContext';
@@ -71,26 +72,26 @@ export const WifiPortalBuilder = () => {
           <h2 className="text-2xl font-bold text-gray-900">Wi-Fi Portal Builder</h2>
           <p className="text-gray-500">Design the login page your customers see when they connect.</p>
         </div>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button 
             onClick={copyLink}
-            className="px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center gap-2 text-sm font-medium transition-colors"
+            className="flex-1 md:flex-none px-4 py-2 bg-white border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 flex items-center justify-center gap-2 text-sm font-medium transition-colors"
           >
-            <Copy size={16} /> Copy Public Link
+            <Copy size={16} /> Link
           </button>
           <button 
             onClick={openLiveSite}
-            className="px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-100 flex items-center gap-2 text-sm font-medium transition-colors"
+            className="flex-1 md:flex-none px-4 py-2 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg hover:bg-indigo-100 flex items-center justify-center gap-2 text-sm font-medium transition-colors"
           >
-            <Globe size={16} /> View Live
+            <Globe size={16} /> Live
           </button>
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center gap-2 font-medium disabled:opacity-50 transition-colors shadow-sm"
+            className="flex-1 md:flex-none px-6 py-2 bg-primary text-white rounded-lg hover:bg-primary/90 flex items-center justify-center gap-2 font-medium disabled:opacity-50 transition-colors shadow-sm"
           >
             {saving ? <RefreshCw className="animate-spin" size={18} /> : success ? <Check size={18} /> : <Save size={18} />}
-            {saving ? 'Saving...' : success ? 'Saved!' : 'Save Changes'}
+            {saving ? 'Saving...' : success ? 'Saved!' : 'Save'}
           </button>
         </div>
       </div>
@@ -222,79 +223,82 @@ export const WifiPortalBuilder = () => {
 
         {/* Preview Column */}
         <div className="lg:col-span-5 flex justify-center items-start pt-4 lg:pt-0">
-            <div className="sticky top-6">
-                <div className="relative border-[12px] border-gray-900 rounded-[3rem] h-[720px] w-[360px] bg-black shadow-2xl overflow-hidden ring-4 ring-gray-200">
-                  {/* Notch */}
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 w-32 bg-black rounded-b-xl z-20"></div>
-                  
-                  {/* Screen Content */}
-                  <div 
-                      className="w-full h-full overflow-y-auto bg-white flex flex-col relative"
-                      style={{ backgroundColor: config.backgroundColor }}
-                  >
-                      {config.backgroundImage && (
-                          <div 
-                              className="absolute inset-0 bg-cover bg-center z-0 opacity-20 pointer-events-none"
-                              style={{ backgroundImage: `url(${config.backgroundImage})` }}
-                          />
-                      )}
+            <div className="sticky top-6 w-full flex justify-center">
+                {/* Scaled wrapper for mobile responsiveness */}
+                <div className="origin-top transform scale-[0.85] sm:scale-100 transition-transform">
+                    <div className="relative border-[12px] border-gray-900 rounded-[3rem] h-[720px] w-[360px] bg-black shadow-2xl overflow-hidden ring-4 ring-gray-200">
+                      {/* Notch */}
+                      <div className="absolute top-0 left-1/2 -translate-x-1/2 h-6 w-32 bg-black rounded-b-xl z-20"></div>
                       
-                      <div className="relative z-10 flex flex-col h-full p-6">
-                           {/* Status Bar Mock */}
-                           <div className="h-8 flex justify-between items-center px-1 mb-4 opacity-50 text-gray-900">
-                                <span className="text-[10px] font-bold">9:41</span>
-                                <div className="flex gap-1">
-                                    <div className="w-4 h-2.5 bg-current rounded-sm"></div>
-                                    <div className="w-0.5 h-2.5 bg-current rounded-sm"></div>
-                                </div>
-                           </div>
+                      {/* Screen Content */}
+                      <div 
+                          className="w-full h-full overflow-y-auto bg-white flex flex-col relative"
+                          style={{ backgroundColor: config.backgroundColor }}
+                      >
+                          {config.backgroundImage && (
+                              <div 
+                                  className="absolute inset-0 bg-cover bg-center z-0 opacity-20 pointer-events-none"
+                                  style={{ backgroundImage: `url(${config.backgroundImage})` }}
+                              />
+                          )}
+                          
+                          <div className="relative z-10 flex flex-col h-full p-6">
+                               {/* Status Bar Mock */}
+                               <div className="h-8 flex justify-between items-center px-1 mb-4 opacity-50 text-gray-900">
+                                    <span className="text-[10px] font-bold">9:41</span>
+                                    <div className="flex gap-1">
+                                        <div className="w-4 h-2.5 bg-current rounded-sm"></div>
+                                        <div className="w-0.5 h-2.5 bg-current rounded-sm"></div>
+                                    </div>
+                               </div>
 
-                          <div className="flex-1 flex flex-col justify-center items-center text-center space-y-6">
-                              {config.logoImage ? (
-                                  <img src={config.logoImage} alt="Logo" className="h-20 w-auto object-contain" />
-                              ) : (
-                                  <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400 shadow-inner">
-                                      <span className="font-bold text-xs">LOGO</span>
-                                  </div>
-                              )}
-                              
-                              <div className="space-y-2">
-                                  <h2 className="text-2xl font-bold text-gray-900 leading-tight">{config.headline}</h2>
-                                  <p className="text-gray-600 text-sm">{config.subheadline}</p>
-                              </div>
-
-                              <div className="w-full space-y-3 pt-4">
-                                  <div className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white/80 text-left text-sm text-gray-400">Full Name</div>
-                                  <div className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white/80 text-left text-sm text-gray-400">Email Address</div>
-                                  {config.requirePhone && (
-                                      <div className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white/80 text-left text-sm text-gray-400">Phone Number</div>
+                              <div className="flex-1 flex flex-col justify-center items-center text-center space-y-6">
+                                  {config.logoImage ? (
+                                      <img src={config.logoImage} alt="Logo" className="h-20 w-auto object-contain" />
+                                  ) : (
+                                      <div className="w-20 h-20 bg-gray-100 rounded-2xl flex items-center justify-center text-gray-400 shadow-inner">
+                                          <span className="font-bold text-xs">LOGO</span>
+                                      </div>
                                   )}
+                                  
+                                  <div className="space-y-2">
+                                      <h2 className="text-2xl font-bold text-gray-900 leading-tight">{config.headline}</h2>
+                                      <p className="text-gray-600 text-sm">{config.subheadline}</p>
+                                  </div>
+
+                                  <div className="w-full space-y-3 pt-4">
+                                      <div className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white/80 text-left text-sm text-gray-400">Full Name</div>
+                                      <div className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white/80 text-left text-sm text-gray-400">Email Address</div>
+                                      {config.requirePhone && (
+                                          <div className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-white/80 text-left text-sm text-gray-400">Phone Number</div>
+                                      )}
+                                  </div>
+                                  
+                                  <div className="flex items-start gap-3 text-left pt-2">
+                                      <div className="mt-0.5 w-4 h-4 border border-gray-400 rounded flex-shrink-0" />
+                                      <p className="text-[10px] text-gray-500 leading-snug">
+                                          {config.termsText}
+                                      </p>
+                                  </div>
                               </div>
-                              
-                              <div className="flex items-start gap-3 text-left pt-2">
-                                  <div className="mt-0.5 w-4 h-4 border border-gray-400 rounded flex-shrink-0" />
-                                  <p className="text-[10px] text-gray-500 leading-snug">
-                                      {config.termsText}
+
+                              <div className="pt-8 pb-4">
+                                  <button 
+                                      className="w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95"
+                                      style={{ backgroundColor: config.accentColor }}
+                                  >
+                                      {config.buttonText}
+                                  </button>
+                                  <p className="text-[10px] text-center text-gray-400 mt-4 font-medium uppercase tracking-widest">
+                                      Free High-Speed Wi-Fi
                                   </p>
                               </div>
                           </div>
-
-                          <div className="pt-8 pb-4">
-                              <button 
-                                  className="w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform active:scale-95"
-                                  style={{ backgroundColor: config.accentColor }}
-                              >
-                                  {config.buttonText}
-                              </button>
-                              <p className="text-[10px] text-center text-gray-400 mt-4 font-medium uppercase tracking-widest">
-                                  Free High-Speed Wi-Fi
-                              </p>
-                          </div>
                       </div>
-                  </div>
-                </div>
-                <div className="text-center mt-4">
-                   <p className="text-sm text-gray-500">Live Preview</p>
+                    </div>
+                    <div className="text-center mt-4">
+                       <p className="text-sm text-gray-500">Live Preview</p>
+                    </div>
                 </div>
             </div>
         </div>

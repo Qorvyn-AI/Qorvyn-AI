@@ -15,8 +15,8 @@ export const LiveAssistant = () => {
   You help users with email marketing strategies, drafting ideas, and navigating the Qorvyn platform.
   If the user asks about their account, ask for their business name to look it up (simulate this).`;
 
+  // Fix: useLiveAssistant now correctly references process.env.API_KEY internally
   const { connect, disconnect, isConnected, isSpeaking, volume, error } = useLiveAssistant({
-    apiKey,
     systemInstruction
   });
 
@@ -132,7 +132,7 @@ export const LiveAssistant = () => {
              </button>
              
              <div className="text-xs text-gray-400 font-mono">
-                Gemini 2.0 Flash Exp
+                Gemini 2.5 Native Audio
              </div>
           </div>
         </div>

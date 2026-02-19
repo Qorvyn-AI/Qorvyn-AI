@@ -1,31 +1,23 @@
-import { defineConfig } from 'vite';
+import path from 'path';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
-// https://vitejs.dev/config/
-export default defineConfig({
-  plugins: [react()],
-  base: './', // Ensures assets are loaded relatively
-  build: {
-    outDir: 'dist',
-    emptyOutDir: true,
-    // Increase limit slightly to avoid warnings for the vendor chunks themselves
-    chunkSizeWarningLimit: 1000,
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          // Split React core to ensure long-term caching (these change rarely)
-          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
-          
-          // Split heavy UI libraries (Recharts is usually large)
-          'vendor-ui': ['recharts', 'lucide-react'],
-          
-          // Split the AI SDK so it doesn't load on pages that don't need it (like Login)
-          'vendor-ai': ['@google/genai']
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, '.', '');
+    return {
+      server: {
+        port: 3000,
+        host: '0.0.0.0',
+      },
+      plugins: [react()],
+      define: {
+        'process.env.API_KEY': JSON.stringify(env.GEMINI_API_KEY),
+        'process.env.GEMINI_API_KEY': JSON.stringify(env.GEMINI_API_KEY)
+      },
+      resolve: {
+        alias: {
+          '@': path.resolve(__dirname, '.'),
         }
       }
-    }
-  },
-  server: {
-    port: 3000,
-  }
+    };
 });

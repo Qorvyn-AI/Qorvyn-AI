@@ -1,27 +1,36 @@
-import React from 'react';
+
+import React, { Component, ReactNode } from 'react';
 import ReactDOM from 'react-dom/client';
 import App from './App';
 
 // --- PRODUCTION SAFETIES ---
 
-// 1. Process Polyfill
-// Browsers don't have 'process.env'. If the build tool doesn't inject it, the app crashes immediately.
+// 1. Process Polyfill (Already handled by index.html, but keeping for safety in environments with direct index.tsx loading)
 if (typeof process === 'undefined') {
   (window as any).process = { env: {} };
 }
 
 // 2. Vercel/Vite Environment Bridge
-// Vercel exposes env vars via import.meta.env in Vite. We map this to process.env.API_KEY
-// so the Google GenAI SDK works without modification.
-const VERCEL_API_KEY = import.meta.env?.VITE_GEMINI_API_KEY;
-
+const VERCEL_API_KEY = (import.meta as any).env?.VITE_GEMINI_API_KEY;
 if (VERCEL_API_KEY) {
   (window as any).process.env.API_KEY = VERCEL_API_KEY;
 }
 
 // 3. Error Boundary
-class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { hasError: boolean; error: any }> {
-  constructor(props: { children: React.ReactNode }) {
+interface ErrorBoundaryProps {
+  children?: ReactNode;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: any;
+}
+
+class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  public state: ErrorBoundaryState;
+  public props: ErrorBoundaryProps;
+
+  constructor(props: ErrorBoundaryProps) {
     super(props);
     this.state = { hasError: false, error: null };
   }
@@ -35,7 +44,10 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
   }
 
   render() {
-    if (this.state.hasError) {
+    const { hasError, error } = this.state;
+    const { children } = this.props;
+
+    if (hasError) {
       return (
         <div style={{ 
           height: '100vh', 
@@ -57,7 +69,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
             overflow: 'auto', 
             maxWidth: '100%' 
           }}>
-            {this.state.error?.toString()}
+            {error?.toString()}
           </pre>
           <button 
             onClick={() => window.location.reload()}
@@ -69,7 +81,7 @@ class ErrorBoundary extends React.Component<{ children: React.ReactNode }, { has
       );
     }
 
-    return this.props.children;
+    return children;
   }
 }
 
@@ -80,9 +92,8 @@ if (!rootElement) {
 
 const root = ReactDOM.createRoot(rootElement);
 
-// 4. API Key Gate (Friendly Setup Screen)
-// Checks if the key is effectively missing in the environment.
-const hasKey = (window as any).process.env.API_KEY || (process.env && process.env.API_KEY);
+// 4. API Key Gate
+const hasKey = (window as any).process?.env?.API_KEY || (typeof process !== 'undefined' && process.env?.API_KEY);
 
 if (!hasKey) {
   root.render(
@@ -135,7 +146,7 @@ if (!hasKey) {
             <li>Navigate to <strong>Environment Variables</strong>.</li>
             <li>Add Key: <code style={{ fontFamily: 'monospace', backgroundColor: '#e2e8f0', padding: '0.1rem 0.3rem', borderRadius: '0.2rem', color: '#0f172a' }}>VITE_GEMINI_API_KEY</code></li>
             <li>Paste your Gemini API key as the Value.</li>
-            <li><strong>Redeploy</strong> (or verify unchecking "Automatically Expose System Environment Variables" isn't needed).</li>
+            <li><strong>Redeploy</strong> your project.</li>
           </ol>
         </div>
 

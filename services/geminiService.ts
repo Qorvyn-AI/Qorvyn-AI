@@ -1,28 +1,41 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
-import { Contact } from "../types";
+import { Contact, StrategyItem } from "../types";
+
+export interface EmailScoreResult {
+  overallScore: number;
+  overallInsight: string;
+  subjectAnalysis: {
+    score: number;
+    feedback: string;
+    suggestions: string[];
+  };
+  bodyAnalysis: {
+    score: number;
+    feedback: string;
+    suggestions: string[];
+  };
+}
 
 export interface GeneratedEmail {
   subject: string;
   body: string;
-  subjectSuggestions?: string[];
+  subjectSuggestions?: { text: string; score: number }[];
+  score?: number;
+  insight?: string;
+  triggerUsed?: string;
+  sources?: { title: string; uri: string }[];
+  detailedAnalysis?: EmailScoreResult;
 }
 
-export interface SocialPosts {
-  linkedin: string;
-  twitter: string;
-  facebook: string;
-}
-
-export interface SegmentSuggestion {
-  name: string;
-  description: string;
-  criteria: string;
-  marketing_angle: string;
-}
-
-export interface GrowthReport {
+export interface GeneratedSocialPost {
   content: string;
-  sources: { title: string; uri: string }[];
+  hashtags: string[];
+  imagePrompt?: string;
+  viralityScore: number;
+  strategy: string;
+  bestTime?: string;
+  sources?: { title: string; uri: string }[];
 }
 
 export interface ImageInput {
@@ -36,20 +49,65 @@ export interface PastCampaignData {
   openRate: number;
 }
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+export interface AudienceInsights {
+  summary: string;
+  top_demographic: string;
+  engagement_trend: string;
+  recommended_actions: string[];
+}
+
+// Robust JSON cleaner to extract objects from any text
+const cleanJson = (text: string) => {
+  if (!text) return '{}';
+  // Find the first '{' and the last '}' to extract the JSON object
+  const firstBrace = text.indexOf('{');
+  const lastBrace = text.lastIndexOf('}');
+  if (firstBrace !== -1 && lastBrace !== -1) {
+    return text.substring(firstBrace, lastBrace + 1);
+  }
+  return text;
+};
+
+// Helper for Fallback Logic to handle Quota Exceeded (429) errors
+const generateWithFallback = async (ai: GoogleGenAI, params: any, primaryModel: string) => {
+    const fallbackModel = 'gemini-3-flash-preview';
+    try {
+        return await ai.models.generateContent({
+            ...params,
+            model: primaryModel
+        });
+    } catch (error: any) {
+        // Check for quota/rate limit errors (429) or overloaded (503)
+        const isQuotaError = error.status === 429 || 
+                             (error.message && error.message.includes('429')) ||
+                             (error.message && error.message.includes('quota')) ||
+                             (error.message && error.message.includes('RESOURCE_EXHAUSTED'));
+                             
+        if (isQuotaError) {
+            console.warn(`Primary model ${primaryModel} quota exceeded. Falling back to ${fallbackModel}.`);
+            // Brief pause to allow system to recover slightly if it was a burst limit
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            return await ai.models.generateContent({
+                ...params,
+                model: fallbackModel
+            });
+        }
+        throw error;
+    }
+};
 
 export const GeminiService = {
   generateEmail: async (
     instruction: string, 
     businessName: string, 
     images: ImageInput[] = [],
-    pastCampaigns: PastCampaignData[] = []
+    pastCampaigns: PastCampaignData[] = [],
+    language: string = 'English',
+    websiteUrl: string = ''
   ): Promise<GeneratedEmail> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-      // Prepare content parts
       const parts: any[] = [];
-      
-      // Add images first (multimodal input)
       images.forEach(img => {
         parts.push({
           inlineData: {
@@ -59,241 +117,480 @@ export const GeminiService = {
         });
       });
 
-      // Add text prompt
-      let promptText = `You are an expert email marketing copywriter for a business named "${businessName}". 
-        Write a professional, engaging marketing email based on the following instruction: "${instruction}".
-        The tone should be persuasive but polite.`;
-
-      if (images.length > 0) {
-        promptText += `
-        \nI have provided ${images.length} images to include in this email.
-        CRITICAL INSTRUCTION:
-        1. Analyze the content of each image to write relevant copy around it.
-        2. You MUST include these images in your HTML output using specific placeholders.
-        3. Use the placeholder "{{IMAGE_0}}" for the first image, "{{IMAGE_1}}" for the second, and so on.
-        4. Place the <img> tags where they make the most sense contextually (e.g., after a paragraph describing the item in the image).
-        5. Use standard HTML structure (e.g., <img src="{{IMAGE_0}}" style="max-width: 100%; border-radius: 8px; margin: 10px 0;" />).
+      // DYNAMIC PROMPT PART FOR IMAGES
+      const imageInstruction = images.length > 0
+        ? `
+        **IMPORTANT: IMAGE HANDLING**
+        - I have provided ${images.length} image(s) for this email.
+        - You MUST include them in the HTML using specific placeholders.
+        - For the first image, use <img src="{{IMAGE_0}}" alt="Image 1" style="width:100%; max-width:600px; border-radius:8px; margin: 20px 0; display: block;" />.
+        - For the second image, use <img src="{{IMAGE_1}}" ... />, and so on.
+        - Place these images strategically within the content (e.g., as a hero image at the top, or breaking up sections of text). Do NOT ignore them.
+        `
+        : `
+        **VISUALS**
+        - Do NOT generate <img> tags with fake URLs since no images were provided.
+        - Instead, use **CSS styling** to create visual interest based on the brand analysis.
         `;
-      }
 
-      if (pastCampaigns.length > 0) {
-        promptText += `\n\n### HISTORICAL PERFORMANCE DATA
-        Use the following data from our top-performing past campaigns to guide your writing style and subject line generation.
-        
-        Top Campaigns (Subject & Open Rate):
-        ${JSON.stringify(pastCampaigns.map(c => ({ subject: c.subject, openRate: `${c.openRate}%`, snippet: c.content.substring(0, 100) + "..." })))}
-        
-        **Instructions for History:**
-        1. Adopt a similar tone/voice to these successful emails in the 'body'.
-        2. In the 'subjectSuggestions' array, generate 5 alternative subject lines that use similar psychological triggers (urgency, curiosity, benefit) as the high-performing past subjects.
+      // DYNAMIC BRANDING INSTRUCTION VIA SEARCH
+      const brandingInstruction = websiteUrl 
+        ? `
+        **AUTOMATED BRAND ANALYSIS (MANDATORY)**
+        - The client's website is: ${websiteUrl}
+        - **ACTION**: Use Google Search to analyze this website's visual identity.
+        - Look for: Primary brand color, accent color, and general "climate" (e.g., minimalist, luxury, playful, corporate).
+        - **APPLY TO HTML**: 
+          - Use the discovered hex codes for the background of the Call-to-Action button.
+          - Use the brand colors for headers (h1, h2) and borders.
+          - Match the writing tone to the website's copy style.
+        - If Google Search fails to find specific colors, infer a palette that matches the industry standards for "${businessName}".
+        ` 
+        : `
+        **BRANDING**
+        - No website URL provided. Use a clean, modern color palette (e.g., Indigo #4F46E5, Slate #1E293B) suitable for a professional business.
         `;
-      } else {
-        promptText += `\n\nIn the 'subjectSuggestions' array, generate 5 alternative catchy subject lines suitable for this email.`;
-      }
 
-      promptText += `\nReturn the result as a JSON object with 'subject', 'body', and 'subjectSuggestions' fields.
-        The 'body' should be formatted with basic HTML tags like <p>, <br>, <strong>, and the <img> tags as requested. Do not include <html> or <body> wrapper tags.`;
+      const promptText = `Role: World-Class HTML Email Developer & Copywriter for "${businessName}".
+      
+      Task: Create a visually stunning, high-converting HTML marketing email based on:
+      """
+      ${instruction}
+      """
+
+      ${brandingInstruction}
+
+      ${imageInstruction}
+
+      Design Guidelines (STRICT):
+      1.  **Layout**: Use a centered container (max-width: 600px) with a clean background color (e.g., #f3f4f6).
+      2.  **Card Style**: The main content should be in a white box with rounded corners and a subtle shadow.
+      3.  **Call To Action**: Create a beautiful, bulletproof button using HTML/CSS. **The button color MUST match the brand analysis results.**
+      4.  **Footer (MANDATORY)**: You MUST include a footer section at the bottom.
+          - It must contain the business name.
+          - It MUST contain an "Unsubscribe" link. Use exactly this format: <a href="{{System.Unsubscribe}}">Unsubscribe</a>.
+          - This is legally required for compliance.
+      5.  **Language**: Write the copy in ${language}.
+
+      Output Requirements:
+      - Return a JSON object.
+      - 'subject': A catchy subject line.
+      - 'body': The FULL HTML code. Use inline CSS for everything to ensure it renders in email clients.
+      - 'thought_process': Brief explanation of the strategy and **specifically mention which brand colors were found/used from the URL analysis**.
+      - 'subjectSuggestions': 3 alternative subject lines.
+      `;
 
       parts.push({ text: promptText });
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: { parts }, // Pass the array of parts
+      // Use helper for retry logic with 'gemini-3-pro-preview' as primary
+      const response = await generateWithFallback(ai, {
+        contents: { parts },
         config: {
+          tools: [{ googleSearch: {} }],
           responseMimeType: 'application/json',
           responseSchema: {
             type: Type.OBJECT,
             properties: {
+              thought_process: { type: Type.STRING },
               subject: { type: Type.STRING },
-              body: { type: Type.STRING },
+              body: { type: Type.STRING, description: "Full HTML content with inline CSS." },
+              retention_score: { type: Type.NUMBER },
+              psychological_insight: { type: Type.STRING },
+              psychological_trigger_used: { type: Type.STRING },
               subjectSuggestions: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              }
-            },
-            required: ['subject', 'body', 'subjectSuggestions']
-          }
-        }
-      });
-
-      const text = response.text;
-      if (!text) throw new Error("No response from AI");
-      
-      return JSON.parse(text) as GeneratedEmail;
-    } catch (error) {
-      console.error("Gemini Generation Error:", error);
-      throw error;
-    }
-  },
-
-  suggestSubjectLines: async (currentSubject: string, emailBody: string, pastCampaigns: { subject: string, openRate: number }[] = []): Promise<string[]> => {
-    try {
-      let prompt = `Based on the following email body: "${emailBody.substring(0, 500)}..." 
-        and the current subject line: "${currentSubject}", 
-        generate 5 alternative, high-performing subject lines. 
-        They should vary in tone (curiosity, urgency, benefit-driven).`;
-
-      if (pastCampaigns.length > 0) {
-        const topCampaigns = [...pastCampaigns]
-            .filter(c => c.openRate !== undefined)
-            .sort((a, b) => b.openRate - a.openRate)
-            .slice(0, 5);
-
-        prompt += `\n\nHere are the top performing subject lines from previous campaigns (with their open rates). 
-        Analyze the patterns in these successful subjects and apply similar psychological triggers to the new suggestions:
-        ${JSON.stringify(topCampaigns)}`;
-      }
-
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              suggestions: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING }
-              }
-            }
-          }
-        }
-      });
-
-      const text = response.text;
-      if (!text) return [];
-      const json = JSON.parse(text);
-      return json.suggestions || [];
-    } catch (error) {
-      console.error("Subject Line Error:", error);
-      return [];
-    }
-  },
-
-  generateSocialPosts: async (emailContent: string): Promise<SocialPosts> => {
-    try {
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Repurpose the following email marketing content into social media posts for LinkedIn, Twitter (X), and Facebook.
-        
-        Email Content: "${emailContent.substring(0, 1000)}..."
-        
-        Rules:
-        - LinkedIn: Professional, business-focused, includes hashtags.
-        - Twitter: Short, punchy, under 280 chars, includes hashtags.
-        - Facebook: Casual, engaging, encourages sharing.
-        `,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              linkedin: { type: Type.STRING },
-              twitter: { type: Type.STRING },
-              facebook: { type: Type.STRING }
-            },
-            required: ['linkedin', 'twitter', 'facebook']
-          }
-        }
-      });
-
-      const text = response.text;
-      if (!text) throw new Error("No response");
-      return JSON.parse(text) as SocialPosts;
-    } catch (error) {
-      console.error("Social Media Error:", error);
-      throw error;
-    }
-  },
-
-  analyzeSegments: async (contacts: Contact[]): Promise<SegmentSuggestion[]> => {
-    try {
-      // Send a rich sample to help AI understand demographics and engagement
-      const sample = contacts.slice(0, 50).map(c => ({ 
-        source: c.source, 
-        email_domain: c.email.split('@')[1],
-        engagement: c.engagementScore > 70 ? 'High' : c.engagementScore > 30 ? 'Medium' : 'Low',
-        location: c.location || 'Unknown',
-        job: c.jobTitle || 'Unknown'
-      }));
-      
-      const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: `Analyze this sample of contact data: ${JSON.stringify(sample)}.
-        Suggest 3 strategic market segments for this audience based on engagement level (High/Medium/Low), demographics (Location, Job Title), or email behavior.
-        
-        For each segment provide:
-        1. A catchy Name
-        2. Description of the persona
-        3. Technical Criteria (e.g. "Engagement > 70 AND Location contains 'USA'")
-        4. Marketing Angle (specific hook or value proposition for this group)
-        `,
-        config: {
-          responseMimeType: 'application/json',
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              segments: {
                 type: Type.ARRAY,
                 items: {
                   type: Type.OBJECT,
                   properties: {
-                    name: { type: Type.STRING },
-                    description: { type: Type.STRING },
-                    criteria: { type: Type.STRING },
-                    marketing_angle: { type: Type.STRING }
-                  },
-                  required: ['name', 'description', 'criteria', 'marketing_angle']
+                    text: { type: Type.STRING },
+                    score: { type: Type.NUMBER }
+                  }
+                }
+              }
+            },
+            required: ["subject", "body", "thought_process"]
+          }
+        }
+      }, 'gemini-3-pro-preview');
+
+      const cleanText = cleanJson(response.text || '{}');
+      let data;
+      try {
+          data = JSON.parse(cleanText);
+      } catch (e) {
+          console.error("Failed to parse JSON", e);
+          data = { 
+              subject: "Draft Generated", 
+              body: `<div style="padding:20px;">${response.text}</div>`,
+              retention_score: 0
+          };
+      }
+      
+      const sources: { title: string; uri: string }[] = [];
+      if (response.candidates && response.candidates[0]?.groundingMetadata?.groundingChunks) {
+          response.candidates[0].groundingMetadata.groundingChunks.forEach((chunk: any) => {
+              if (chunk.web) {
+                  sources.push({ title: chunk.web.title, uri: chunk.web.uri });
+              }
+          });
+      }
+
+      // Default high score for new generation as it follows best practices
+      const score = data.retention_score || 85;
+
+      return {
+        subject: data.subject || 'Untitled Campaign',
+        body: data.body || '<p>No content generated.</p>',
+        score: Math.min(100, Math.max(0, Math.round(score))),
+        insight: data.psychological_insight || data.thought_process || 'Optimized for high engagement.',
+        triggerUsed: data.psychological_trigger_used || 'Visual Hierarchy & Value',
+        subjectSuggestions: data.subjectSuggestions || [],
+        sources: sources
+      };
+    } catch (error) {
+      console.error("Gemini Retention Engine Error:", error);
+      throw error;
+    }
+  },
+
+  generateSocialPost: async (
+    platform: string,
+    topic: string,
+    businessName: string,
+    images: ImageInput[] = [],
+    language: string = 'English'
+  ): Promise<GeneratedSocialPost> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+      const parts: any[] = [];
+      images.forEach(img => {
+        parts.push({
+          inlineData: {
+            mimeType: img.mimeType, 
+            data: img.data
+          }
+        });
+      });
+
+      // Updated to explicitly ask for image analysis
+      const imageContext = images.length > 0 
+        ? "I have attached images. Analyze them carefully. The post content MUST be directly relevant to the visual details, mood, and subject matter of these images." 
+        : "No images provided. Describe an ideal image for this post in the 'imagePrompt' field.";
+
+      const promptText = `You are an expert Social Media Manager for "${businessName}".
+      
+      TASK: Create a viral-worthy social media post for **${platform}** about: "${topic}".
+      
+      ${imageContext}
+      
+      PHASE 1: RESEARCH
+      Use Google Search to find trending hashtags, keywords, and post styles related to "${topic}" on ${platform}.
+      
+      PHASE 2: CREATION
+      Write the post content in ${language}.
+      
+      OUTPUT FORMAT: JSON.
+      `;
+
+      parts.push({ text: promptText });
+
+      // Upgraded to gemini-3-pro-preview for image understanding and search grounding
+      const response = await generateWithFallback(ai, {
+        contents: { parts },
+        config: {
+          tools: [{ googleSearch: {} }],
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              content: { type: Type.STRING },
+              hashtags: { type: Type.ARRAY, items: { type: Type.STRING } },
+              imagePrompt: { type: Type.STRING },
+              viralityScore: { type: Type.NUMBER },
+              strategy: { type: Type.STRING },
+              bestTime: { type: Type.STRING }
+            }
+          }
+        }
+      }, 'gemini-3-pro-preview');
+
+      const cleanText = cleanJson(response.text || '{}');
+      let data;
+      try {
+          data = JSON.parse(cleanText);
+      } catch (e) {
+          console.error("Failed to parse JSON", e);
+          data = {};
+      }
+      
+      const sources: { title: string; uri: string }[] = [];
+      if (response.candidates && response.candidates[0]?.groundingMetadata?.groundingChunks) {
+          response.candidates[0].groundingMetadata.groundingChunks.forEach((chunk: any) => {
+              if (chunk.web) {
+                  sources.push({ title: chunk.web.title, uri: chunk.web.uri });
+              }
+          });
+      }
+
+      return {
+          content: data.content || '',
+          hashtags: data.hashtags || [],
+          imagePrompt: data.imagePrompt || '',
+          viralityScore: data.viralityScore || 0,
+          strategy: data.strategy || '',
+          bestTime: data.bestTime || '',
+          sources
+      } as GeneratedSocialPost;
+
+    } catch (error) {
+      console.error("Gemini Social Engine Error:", error);
+      throw error;
+    }
+  },
+
+  scoreEmailContent: async (subject: string, body: string): Promise<EmailScoreResult> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+      // Use helper for retry logic with 'gemini-3-pro-preview' as primary
+      const response = await generateWithFallback(ai, {
+        contents: `Act as a strict Email Deliverability & Conversion Auditor.
+        
+        TASK: Analyze the following email draft.
+        Subject: "${subject}"
+        Body Snippet: "${body.substring(0, 1000)}..."
+
+        STEPS:
+        1. Analyze the Subject Line: Is it catchy? concise? Does it trigger curiosity?
+        2. Analyze the Body Content: Is it readable? Persuasive? clear CTA?
+        3. Check for spam trigger words.
+
+        OUTPUT JSON:
+        - 'overallScore': Integer 0-100.
+        - 'overallInsight': A 1-2 sentence summary.
+        - 'subjectAnalysis': { score (0-100), feedback (string), suggestions (string[]) }
+        - 'bodyAnalysis': { score (0-100), feedback (string), suggestions (string[]) }
+        `,
+        config: {
+          tools: [{ googleSearch: {} }],
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              overallScore: { type: Type.NUMBER },
+              overallInsight: { type: Type.STRING },
+              subjectAnalysis: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.NUMBER },
+                  feedback: { type: Type.STRING },
+                  suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
+                }
+              },
+              bodyAnalysis: {
+                type: Type.OBJECT,
+                properties: {
+                  score: { type: Type.NUMBER },
+                  feedback: { type: Type.STRING },
+                  suggestions: { type: Type.ARRAY, items: { type: Type.STRING } }
                 }
               }
             }
           }
         }
-      });
-
-      const text = response.text;
-      if (!text) return [];
-      const json = JSON.parse(text);
-      return json.segments || [];
+      }, 'gemini-3-pro-preview');
+      
+      const cleanText = cleanJson(response.text || '{}');
+      const data = JSON.parse(cleanText);
+      
+      // Robust Score Normalization
+      let score = data.overallScore || 0;
+      if (score > 0 && score < 1) {
+          score = Math.round(score * 100);
+      }
+      
+      return { 
+          overallScore: Math.min(100, Math.max(0, Math.round(score))), 
+          overallInsight: data.overallInsight || "Analysis complete.",
+          subjectAnalysis: data.subjectAnalysis || { score: 0, feedback: "No analysis", suggestions: [] },
+          bodyAnalysis: data.bodyAnalysis || { score: 0, feedback: "No analysis", suggestions: [] }
+      };
     } catch (error) {
-      console.error("Segmentation Error:", error);
+      console.error("Scoring Error", error);
+      return { 
+        overallScore: 0, 
+        overallInsight: "Evaluation service unavailable.",
+        subjectAnalysis: { score: 0, feedback: "Error", suggestions: [] },
+        bodyAnalysis: { score: 0, feedback: "Error", suggestions: [] }
+      };
+    }
+  },
+
+  suggestSubjectLines: async (currentSubject: string, emailBody: string, pastCampaigns: { subject: string, openRate: number }[] = []): Promise<{text: string, score: number}[]> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Generate 3 psychologically optimized subject alternatives for this email body. 
+        Current Subject: ${currentSubject}
+        Body Snippet: ${emailBody.substring(0, 500)}...
+        
+        Return JSON with 'suggestions' array containing {text, score (predicted 0-100)}.`,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              suggestions: { 
+                type: Type.ARRAY, 
+                items: { 
+                  type: Type.OBJECT,
+                  properties: {
+                    text: { type: Type.STRING },
+                    score: { type: Type.NUMBER }
+                  }
+                } 
+              }
+            }
+          }
+        }
+      });
+      const cleanText = cleanJson(response.text || '{}');
+      return JSON.parse(cleanText).suggestions || [];
+    } catch (error) {
+      return [];
+    }
+  },
+
+  getAudienceInsights: async (contacts: Contact[]): Promise<AudienceInsights> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+      const sample = contacts.slice(0, 30).map(c => ({
+        engagement: c.engagementScore,
+        location: c.location,
+        job: c.jobTitle,
+        spent: c.totalSpent || 0
+      }));
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Analyze audience data: ${JSON.stringify(sample)}.
+        Identify patterns in high-value customers and suggest retention actions.`,
+        config: {
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              summary: { type: Type.STRING },
+              top_demographic: { type: Type.STRING },
+              engagement_trend: { type: Type.STRING },
+              recommended_actions: { type: Type.ARRAY, items: { type: Type.STRING } }
+            }
+          }
+        }
+      });
+      const cleanText = cleanJson(response.text || '{}');
+      return JSON.parse(cleanText) as AudienceInsights;
+    } catch (error) {
+      return {
+        summary: "Unable to analyze audience at this time.",
+        top_demographic: "General Audience",
+        engagement_trend: "Stable",
+        recommended_actions: ["Analyze manual lists for better insights"]
+      };
+    }
+  },
+
+  generateActionableStrategies: async (
+    businessName: string, 
+    industry: string, 
+    description: string
+  ): Promise<{ strategies: StrategyItem[], executiveSummary: string }> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    try {
+      // Changed to 'gemini-3-flash-preview' for significantly faster execution (approx 2-3s vs 10s+)
+      // Wrapped in generateWithFallback to ensure robust retry on 429 errors
+      const response = await generateWithFallback(ai, {
+        contents: `Act as a Chief Strategy Officer for ${businessName} (${industry}).
+        Context: ${description}.
+        Generate 3 high-impact growth strategies and an executive summary.
+        Return JSON.`,
+        config: {
+          tools: [{ googleSearch: {} }],
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              executiveSummary: { type: Type.STRING },
+              strategies: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    title: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    rationale: { type: Type.STRING },
+                    category: { type: Type.STRING },
+                    impact: { type: Type.STRING },
+                    difficulty: { type: Type.STRING },
+                    isEmailOpportunity: { type: Type.BOOLEAN },
+                    emailPrompt: { type: Type.STRING }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }, 'gemini-3-flash-preview');
+
+      const cleanText = cleanJson(response.text || '{}');
+      const data = JSON.parse(cleanText);
+      const strategies = (data.strategies || []).map((s: any, i: number) => ({
+        ...s,
+        id: `gen_strat_${Date.now()}_${i}`,
+        completed: false
+      }));
+
+      return {
+        strategies,
+        executiveSummary: data.executiveSummary || ''
+      };
+    } catch (error) {
+      console.error("Strategy Generation Error", error);
       throw error;
     }
   },
 
-  generateGrowthReport: async (businessDescription: string): Promise<GrowthReport> => {
+  chatWithStrategy: async (
+    history: {role: 'user' | 'model', text: string}[], 
+    strategy: StrategyItem, 
+    businessName: string
+  ): Promise<string> => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     try {
-      const response = await ai.models.generateContent({
+      const chat = ai.chats.create({
         model: 'gemini-3-flash-preview',
-        contents: `Research the latest market trends (2024-2025) for: "${businessDescription}".
-        
-        Provide a strategic growth report in Markdown format with the following sections:
-        1. **Trending Now**: What is currently popular in this industry?
-        2. **Customer Acquisition**: What specific actions must businesses do to gain customers right now?
-        3. **Revenue Drivers**: Analyze what specifically makes money for successful businesses in this niche.
-        4. **Actionable Checklist**: 3-5 concrete steps the user can take today.
-        
-        Use the Google Search tool to find up-to-date information.
-        Do not output JSON. Output clear, professional Markdown.`,
-        config: {
-          tools: [{ googleSearch: {} }]
-        }
+        history: [
+          {
+            role: 'user',
+            parts: [{ text: `You are an expert consultant for ${businessName}. Discussing strategy: ${strategy.title}.` }]
+          },
+          {
+            role: 'model',
+            parts: [{ text: "Ready to help. What questions do you have?" }]
+          },
+          ...history.slice(0, -1).map(msg => ({
+            role: msg.role,
+            parts: [{ text: msg.text }]
+          }))
+        ]
       });
 
-      // Extract Grounding Metadata (Sources)
-      const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-      const sources = groundingChunks
-        .map((chunk: any) => chunk.web)
-        .filter((web: any) => web && web.uri && web.title)
-        .map((web: any) => ({ title: web.title, uri: web.uri }));
-
-      return {
-        content: response.text || "No report generated.",
-        sources: sources
-      };
+      const lastUserMsg = history[history.length - 1].text;
+      const response = await chat.sendMessage({ message: lastUserMsg });
+      
+      return response.text || "I couldn't generate a response.";
     } catch (error) {
-      console.error("Growth Report Error:", error);
+      console.error("Chat Error", error);
       throw error;
     }
   }

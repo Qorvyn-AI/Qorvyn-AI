@@ -1,12 +1,13 @@
+
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { MockBackend } from '../../services/mockBackend';
 import { WiFiPortalConfig } from '../../types';
-import { Wifi, CheckCircle, Loader2, ShieldCheck, AlertCircle } from 'lucide-react';
+import { Wifi, CheckCircle, Loader2, ShieldCheck, AlertCircle, RefreshCw } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const PortalPage = () => {
-  const { clientId } = useParams<{ clientId: string }>();
+  const { clientId } = useParams();
   const { user } = useAuth();
   
   const [config, setConfig] = useState<WiFiPortalConfig | null>(null);
@@ -82,12 +83,15 @@ export const PortalPage = () => {
     if (!isPreview && clientId) {
         // Only save data if this is a "real" visit (not preview mode)
         try {
+           // Fix: Pass an object to addContact instead of multiple parameters
            await MockBackend.addContact(
              clientId, 
-             formData.name, 
-             formData.email, 
-             formData.phone, 
-             'wifi_portal'
+             {
+               name: formData.name,
+               email: formData.email,
+               phone: formData.phone,
+               source: 'wifi_portal'
+             }
            );
         } catch(e) {
             console.log("Mock save failed (expected in public demo)");
@@ -106,17 +110,20 @@ export const PortalPage = () => {
   );
   
   if (error || !config) return (
-    <div className="h-screen flex flex-col items-center justify-center bg-gray-50 p-6 text-center">
-        <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mb-6">
+    <div className="h-screen flex flex-col items-center justify-center bg-gray-50 p-6 text-center animate-fade-in-up">
+        <div className="w-20 h-20 bg-red-50 rounded-[2rem] flex items-center justify-center mb-6 border border-red-100 shadow-sm">
             <AlertCircle size={32} className="text-red-500" />
         </div>
-        <h1 className="text-2xl font-bold text-gray-900 mb-2">Portal Unavailable</h1>
-        <p className="text-gray-600 max-w-md mx-auto">{error}</p>
+        <h1 className="text-2xl font-black text-gray-900 mb-2 tracking-tight">Connection Failed</h1>
+        <p className="text-gray-500 font-medium max-w-xs mx-auto leading-relaxed mb-8">
+            {error || "We couldn't load the login portal configuration. Please check your internet connection."}
+        </p>
         <button 
             onClick={() => window.location.reload()} 
-            className="mt-8 px-6 py-2 bg-white border border-gray-300 rounded-lg text-sm font-medium hover:bg-gray-50"
+            className="flex items-center gap-2 px-8 py-3 bg-white border border-gray-200 text-gray-900 rounded-2xl font-bold text-sm hover:bg-gray-50 hover:border-gray-300 transition-all shadow-sm active:scale-95"
         >
-            Try Again
+            <RefreshCw size={16} />
+            Retry Connection
         </button>
     </div>
   );
